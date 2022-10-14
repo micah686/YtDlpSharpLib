@@ -43,22 +43,22 @@ namespace YtDlpSharpLib.Tests
             CollectionAssert.AreEquivalent(expected, options.GetOptionFlags().ToArray());
         }
 
-        [TestMethod]
-        public void TestStringOptions()
-        {
-            var expected = new[]
-            {
-                "--format \"mp4/bestvideo\"", "--I 10:100", "--match-filter view_count >=? 1000"
-            };
-            var options = new OptionSet()
-            {
-                Format = "mp4/bestvideo",
-                PlaylistItems = "10:100",
-                MatchFilters = "view_count >=? 1000"                
-            };
-            var arr1 = options.GetOptionFlags().ToArray();
-            CollectionAssert.AreEquivalent(expected, options.GetOptionFlags().ToArray());
-        }
+        //[TestMethod]
+        //public void TestStringOptions()
+        //{
+        //    var expected = new[]
+        //    {
+        //        "--format \"mp4/bestvideo\"", "--I 10:100", "--match-filter view_count >=? 1000"
+        //    };
+        //    var options = new OptionSet()
+        //    {
+        //        Format = "mp4/bestvideo",
+        //        PlaylistItems = "10:100",
+        //        MatchFilters = "view_count >=? 1000"                
+        //    };
+        //    var arr1 = options.GetOptionFlags().ToArray();
+        //    CollectionAssert.AreEquivalent(expected, options.GetOptionFlags().ToArray());
+        //}
 
         [TestMethod]
         public void TestDateTimeOptions()
