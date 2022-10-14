@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net6.0</TargetFrameworks>
+    <Authors>Bluegrams</Authors>
+    <Description>A simple .NET wrapper library for yt-dlp.</Description>
+    <Copyright>© 2022 Micah686</Copyright>
+    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/micah686/YoutubeDLSharp/tree/ytdlp/master</PackageProjectUrl>
+    <PackageTags>youtube video download youtube-dl yt-dlp</PackageTags>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <BuildYear>$([System.DateTime]::Now.ToString(yy))</BuildYear>
+    <BuildDay>$([System.DateTime]::Now.DayOfYear)</BuildDay>
+    <AssemblyVersion>$(VersionPrefix).$(BuildYear)$(BuildDay)</AssemblyVersion>
+    <PackageReleaseNotes>https://github.com/micah686/YoutubeDLSharp/blob/ytdlp/master/Changelog.md</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <PropertyGroup>
+	<IncludeSymbols>true</IncludeSymbols>
+	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+</Project>
