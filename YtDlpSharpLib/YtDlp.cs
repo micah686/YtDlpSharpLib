@@ -25,11 +25,11 @@ namespace YtDlpSharpLib
         /// <summary>
         /// Path to the yt-dlp executable.
         /// </summary>
-        public string YtDlpPath { get; set; } = Utils.YtDlpBinaryName();
+        public string YtDlpPath { get; set; } = Utils.YtDlpBinaryName;
         /// <summary>
         /// Path to the FFmpeg executable.
         /// </summary>
-        public string FFmpegPath { get; set; } = Utils.FfmpegBinaryName();
+        public string FFmpegPath { get; set; } = Utils.FfmpegBinaryName;
         /// <summary>
         /// Path of the folder where items will be downloaded to.
         /// </summary>

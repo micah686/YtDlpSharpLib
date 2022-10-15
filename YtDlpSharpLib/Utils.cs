@@ -17,7 +17,11 @@ namespace YtDlpSharpLib
     /// </summary>
     public static class Utils
     {
-        
+
+        public static string YtDlpBinaryName => GetYtDlpBinaryName();
+        public static string FfmpegBinaryName => GetFfmpegBinaryName();
+        public static string FFprobeBinaryName => GetFfprobeBinaryName();
+
         /// <summary>
         /// Returns the absolute path for the specified path string.
         /// Also searches the environment's PATH variable.
@@ -46,7 +50,7 @@ namespace YtDlpSharpLib
             DownloadFFprobe(directoryPath);
         }
 
-        public static string YtDlpBinaryName(bool fullPath = false)
+        public static string GetYtDlpBinaryName(bool fullPath = false)
         {
             const string BASE_GITHUB_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
 
@@ -76,7 +80,7 @@ namespace YtDlpSharpLib
             }
         }
 
-        public static string FfmpegBinaryName()
+        public static string GetFfmpegBinaryName()
         {
             switch (OSHelper.GetOSVersion())
             {
@@ -90,7 +94,7 @@ namespace YtDlpSharpLib
             }
         }
 
-        public static string FfprobeBinaryName()
+        public static string GetFfprobeBinaryName()
         {
             switch (OSHelper.GetOSVersion())
             {
@@ -109,9 +113,9 @@ namespace YtDlpSharpLib
         /// </summary>
         /// <param name="directoryPath">The optional directory of where it should be saved to</param>
         /// <exception cref="Exception"></exception>
-        public static void DownloadYtDlp(string directoryPath = "")
+        private static void DownloadYtDlp(string directoryPath = "")
         {            
-            string downloadUrl = YtDlpBinaryName(true);
+            string downloadUrl = GetYtDlpBinaryName(true);
 
             if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
 
@@ -125,7 +129,7 @@ namespace YtDlpSharpLib
         /// </summary>
         /// <param name="directoryPath">The optional directory of where it should be saved to</param>
         /// <exception cref="Exception"></exception>
-        public static void DownloadFFmpeg(string directoryPath = "")
+        internal static void DownloadFFmpeg(string directoryPath = "")
         {
             if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
             const string FFMPEG_API_URL = "https://ffbinaries.com/api/v1/version/latest";
@@ -159,7 +163,7 @@ namespace YtDlpSharpLib
 
         }
 
-        public static void DownloadFFprobe(string directoryPath = "")
+        internal static void DownloadFFprobe(string directoryPath = "")
         {
             if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
             const string FFMPEG_API_URL = "https://ffbinaries.com/api/v1/version/latest";
