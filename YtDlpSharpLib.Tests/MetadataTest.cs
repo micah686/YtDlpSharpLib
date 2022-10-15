@@ -9,7 +9,7 @@ namespace YtDlpSharpLib.Tests
     [TestClass]
     public class MetadataTest
     {
-        private static YtDlp _ydl = new YtDlp() { YtDlpPath = Utils.YtDlpBinaryName(), FFmpegPath = Utils.FfmpegBinaryName()};              
+        private static YtDlp _ydl = new YtDlp() { YtDlpPath = Utils.YtDlpBinaryName, FFmpegPath = Utils.FfmpegBinaryName};              
 
         [TestMethod]
         public async Task TestVideoInformationYoutube()
