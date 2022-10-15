@@ -20,7 +20,7 @@ namespace YtDlpSharpLib
 
         public static string YtDlpBinaryName => GetYtDlpBinaryName();
         public static string FfmpegBinaryName => GetFfmpegBinaryName();
-        public static string FFprobeBinaryName => GetFfprobeBinaryName();
+        public static string FfprobeBinaryName => GetFfprobeBinaryName();
 
         /// <summary>
         /// Returns the absolute path for the specified path string.

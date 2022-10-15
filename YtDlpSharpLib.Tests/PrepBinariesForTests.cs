@@ -12,7 +12,7 @@ namespace YtDlpSharpLib.Tests
         [AssemblyInitialize]
         public static void DownloadBinaries(TestContext context)
         {            
-            if (!File.Exists(Utils.YtDlpBinaryName) || !File.Exists(Utils.FfmpegBinaryName) || !File.Exists(Utils.FFprobeBinaryName))
+            if (!File.Exists(Utils.YtDlpBinaryName) || !File.Exists(Utils.FfmpegBinaryName) || !File.Exists(Utils.FfprobeBinaryName))
             {
                 YtDlpSharpLib.Utils.DownloadBinaries();
             }
