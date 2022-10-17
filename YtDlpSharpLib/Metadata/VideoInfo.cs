@@ -255,7 +255,7 @@ namespace YtDlpSharpLib.Metadata
         public string ReleaseYear { get; set; }
 
         [JsonPropertyName("composer")]
-        public string Composter { get; set; }
+        public string Composer { get; set; }
 
         [JsonPropertyName("section_start")]
         public long? SectionStart { get; set; }
