@@ -46,6 +46,9 @@ namespace YtDlpSharpLib.Metadata
         [JsonPropertyName("format")]
         public string Format { get; set; }
 
+        [JsonPropertyName("format_id")]
+        public string FormatID { get; set; }
+
         [JsonPropertyName("player_url")]
         public string PlayerUrl { get; set; }
 
