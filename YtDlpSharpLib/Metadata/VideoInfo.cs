@@ -82,7 +82,7 @@ namespace YtDlpSharpLib.Metadata
 
         [JsonConverter(typeof(UnixTimestampConverter))]
         [JsonPropertyName("timestamp")]
-        public DateTime? Timestamp { get; set; } // date as unix timestamp
+        public DateTime? UploadTimestamp { get; set; } // date as unix timestamp
 
         [JsonConverter(typeof(DateTimeConverter))]
         [JsonPropertyName("upload_date")]        

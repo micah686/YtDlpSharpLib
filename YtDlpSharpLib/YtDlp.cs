@@ -110,13 +110,37 @@ namespace YtDlpSharpLib
         }
 
         /// <summary>
+        /// Runs a fetch of information for the given playlist without downloading the video.
+        /// </summary>
+        /// <param name="url">The URL of the playlist to fetch information for.</param>
+        /// <param name="ct">A CancellationToken used to cancel the process.</param>
+        /// <param name="flat">If set to true, does not extract information for each video in a playlist.</param>
+        /// <param name="overrideOptions">Override options of the default option set for this run.</param>
+        /// <returns>A RunResult object containing a PlaylistInfo object with the requested playlist information.</returns>
+        public async Task<RunResult<PlaylistInfo>> GetPlaylistMetadata(string url,
+            CancellationToken ct = default, bool flat = true, OptionSet overrideOptions = null)
+        {
+            var opts = GetDownloadOptions();
+            opts.DumpSingleJson = true;
+            if (overrideOptions != null)
+            {
+                opts = opts.OverrideOptions(overrideOptions);
+            }
+            PlaylistInfo data = null;
+            var process = new YtDlpProcess(YtDlpPath);
+            process.OutputReceived += (o, e) => data = JsonSerializer.Deserialize<PlaylistInfo>(e.Data);
+            (int code, string[] errors) = await runner.RunThrottled(process, new[] { url }, opts, ct);
+            return new RunResult<PlaylistInfo>(code == 0, errors, data);
+        }
+
+        /// <summary>
         /// Runs a fetch of information for the given video without downloading the video.
         /// </summary>
         /// <param name="url">The URL of the video to fetch information for.</param>
         /// <param name="ct">A CancellationToken used to cancel the process.</param>
         /// <param name="flat">If set to true, does not extract information for each video in a playlist.</param>
         /// <param name="overrideOptions">Override options of the default option set for this run.</param>
-        /// <returns>A RunResult object containing a VideoData object with the requested video information.</returns>
+        /// <returns>A RunResult object containing a VideoInfo object with the requested video information.</returns>
         public async Task<RunResult<VideoInfo>> GetVideoMetadata(string url,
             CancellationToken ct = default, bool flat = true, OptionSet overrideOptions = null)
         {
