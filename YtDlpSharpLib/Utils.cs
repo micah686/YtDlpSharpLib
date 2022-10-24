@@ -4,236 +4,187 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using YtDlpSharpLib.Helpers;
 
-namespace YtDlpSharpLib
+namespace YtDlpSharpLib;
+
+/// <summary>
+/// Utility methods.
+/// </summary>
+public static class Utils
 {
-    /// <summary>
-    /// Utility methods.
-    /// </summary>
-    public static class Utils
+
+    public static string YtDlpBinaryName => GetYtDlpBinaryName();
+    public static string FfmpegBinaryName => GetFfmpegBinaryName();
+    public static string FfprobeBinaryName => GetFfprobeBinaryName();
+
+    public static void DownloadBinaries(string directoryPath = "")
     {
+        Task.Run(() => DownloadYtDlp(directoryPath));
+        Task.Run(() => DownloadFFmpeg(directoryPath));
+        Task.Run(() => DownloadFFprobe(directoryPath));        
+    }
 
-        public static string YtDlpBinaryName => GetYtDlpBinaryName();
-        public static string FfmpegBinaryName => GetFfmpegBinaryName();
-        public static string FfprobeBinaryName => GetFfprobeBinaryName();
+    private static string GetYtDlpBinaryName(bool fullPath = false)
+    {
+        const string BASE_GITHUB_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
 
-        /// <summary>
-        /// Returns the absolute path for the specified path string.
-        /// Also searches the environment's PATH variable.
-        /// </summary>
-        /// <param name="fileName">The relative path string.</param>
-        /// <returns>The absolute path or null if the file was not found.</returns>
-        public static string GetFullPath(string fileName)
+        string downloadUrl = OSHelper.GetOSVersion() switch
         {
-            if (File.Exists(fileName))
-                return Path.GetFullPath(fileName);
+            OSVersion.Windows => $"{BASE_GITHUB_URL}.exe",
+            OSVersion.OSX => $"{BASE_GITHUB_URL}_macos",
+            OSVersion.Linux => BASE_GITHUB_URL,
+            _ => throw new Exception("Your OS isn't supported"),
+        };
+        return fullPath ? downloadUrl : Path.GetFileName(downloadUrl);
+    }
 
-            var values = Environment.GetEnvironmentVariable("PATH");
-            foreach (var p in values.Split(Path.PathSeparator))
-            {
-                var fullPath = Path.Combine(p, fileName);
-                if (File.Exists(fullPath))
-                    return fullPath;
-            }
-            return null;
-        }
-
-        public static void DownloadBinaries(string directoryPath = "")
+    private static string GetFfmpegBinaryName()
+    {
+        return OSHelper.GetOSVersion() switch
         {
-            DownloadYtDlp(directoryPath);
-            DownloadFFmpeg(directoryPath);
-            DownloadFFprobe(directoryPath);
-        }
+            OSVersion.Windows => "ffmpeg.exe",
+            OSVersion.OSX or OSVersion.Linux => "ffmpeg",
+            _ => throw new Exception("Your OS isn't supported"),
+        };
+    }
 
-        public static string GetYtDlpBinaryName(bool fullPath = false)
+    private static string GetFfprobeBinaryName()
+    {
+        return OSHelper.GetOSVersion() switch
         {
-            const string BASE_GITHUB_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+            OSVersion.Windows => "ffprobe.exe",
+            OSVersion.OSX or OSVersion.Linux => "ffprobe",
+            _ => throw new Exception("Your OS isn't supported"),
+        };
+    }
 
-            string downloadUrl = "";
-            switch (OSHelper.GetOSVersion())
-            {
-                case OSVersion.Windows:
-                    downloadUrl = $"{BASE_GITHUB_URL}.exe";
-                    break;
-                case OSVersion.OSX:
-                    downloadUrl = $"{BASE_GITHUB_URL}_macos";
-                    break;
-                case OSVersion.Linux:
-                    downloadUrl = BASE_GITHUB_URL;
-                    break;
-                default:
-                    throw new Exception("Your OS isn't supported");
-            }
+    /// <summary>
+    /// Downloads the YT-DLP binary depending on OS
+    /// </summary>
+    /// <param name="directoryPath">The optional directory of where it should be saved to</param>
+    /// <exception cref="Exception"></exception>
+    internal static void DownloadYtDlp(string directoryPath = "")
+    {            
+        string downloadUrl = GetYtDlpBinaryName(true);
 
-            if (fullPath)
-            {
-                return downloadUrl;
-            }
-            else
-            {
-                return Path.GetFileName(downloadUrl);
-            }
-        }
+        if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
 
-        public static string GetFfmpegBinaryName()
+        var downloadLocation = Path.Combine(directoryPath, Path.GetFileName(downloadUrl));
+        var data = Task.Run(() => GetFileBytesAsync(downloadUrl)).Result;
+        File.WriteAllBytes(downloadLocation, data);
+    }
+
+
+    /// <summary>
+    /// Downloads the FFmpeg binary depending on OS
+    /// </summary>
+    /// <param name="directoryPath">The optional directory of where it should be saved to</param>
+    /// <exception cref="Exception"></exception>
+    internal static async Task DownloadFFmpeg(string directoryPath = "")
+    {
+        await InternalFFHelper(directoryPath, FFmpegApi.BinaryType.FFmpeg);
+    }
+
+    /// <summary>
+    /// Downloads the FFprobe binary depending on OS
+    /// </summary>
+    /// <param name="directoryPath">The optional directory of where it should be saved to</param>
+    /// <exception cref="Exception"></exception>
+    internal static async Task DownloadFFprobe(string directoryPath = "")
+    {
+        await InternalFFHelper(directoryPath, FFmpegApi.BinaryType.FFprobe);
+    }
+
+    private static async Task InternalFFHelper(string directoryPath = "", FFmpegApi.BinaryType binary = FFmpegApi.BinaryType.FFmpeg)
+    {
+        if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
+        const string ffmpegApiUrl = "https://ffbinaries.com/api/v1/version/latest";
+        var ffmpegVersion = JsonSerializer.Deserialize<FFmpegApi.Root>(await (await new HttpClient().GetAsync(ffmpegApiUrl)).Content.ReadAsStringAsync());
+        var ffContent = OSHelper.GetOSVersion() switch
         {
-            switch (OSHelper.GetOSVersion())
-            {
-                case OSVersion.Windows:
-                    return "ffmpeg.exe";
-                case OSVersion.OSX:
-                case OSVersion.Linux:
-                    return "ffmpeg";
-                default:
-                    throw new Exception("Your OS isn't supported");
-            }
-        }
+            OSVersion.Windows => ffmpegVersion?.Bin.Windows64,
+            OSVersion.OSX => ffmpegVersion?.Bin.Osx64,
+            OSVersion.Linux => ffmpegVersion?.Bin.Linux64,
+            _ => throw new NotImplementedException("Your OS isn't supported")
+        };
+        string downloadUrl = binary == FFmpegApi.BinaryType.FFmpeg ? ffContent.Ffmpeg : ffContent.Ffprobe;        
 
-        public static string GetFfprobeBinaryName()
+        var dataBytes = await GetFileBytesAsync(downloadUrl);
+        using var stream = new MemoryStream(dataBytes);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        if (archive.Entries.Count > 0)
         {
-            switch (OSHelper.GetOSVersion())
-            {
-                case OSVersion.Windows:
-                    return "ffprobe.exe";
-                case OSVersion.OSX:
-                case OSVersion.Linux:
-                    return "ffprobe";
-                default:
-                    throw new Exception("Your OS isn't supported");
-            }
-        }
-
-        /// <summary>
-        /// Downloads the YT-DLP binary depending on OS
-        /// </summary>
-        /// <param name="directoryPath">The optional directory of where it should be saved to</param>
-        /// <exception cref="Exception"></exception>
-        private static void DownloadYtDlp(string directoryPath = "")
-        {            
-            string downloadUrl = GetYtDlpBinaryName(true);
-
-            if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
-
-            var downloadLocation = Path.Combine(directoryPath, Path.GetFileName(downloadUrl));
-            var data = Task.Run(() => GetFileBytesAsync(downloadUrl)).Result;
-            File.WriteAllBytes(downloadLocation, data);
-        }
-
-        /// <summary>
-        /// Downloads the FFmpeg binary depending on the OS
-        /// </summary>
-        /// <param name="directoryPath">The optional directory of where it should be saved to</param>
-        /// <exception cref="Exception"></exception>
-        internal static void DownloadFFmpeg(string directoryPath = "")
-        {
-            if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
-            const string FFMPEG_API_URL = "https://ffbinaries.com/api/v1/version/latest";
-
-            string jsonData = Task.Run(async () => await new HttpClient().GetStringAsync(FFMPEG_API_URL)).Result;
-#nullable enable
-            JsonObject? jsonObj = JsonSerializer.Deserialize<JsonObject>(jsonData);
-#nullable disable
-
-            if (jsonObj != null)
-            {
-                var ffmpegURL = OSHelper.GetOSVersion() switch
-                {
-                    OSVersion.Windows => JsonPeeker(jsonObj, new string[] { "bin", "windows-64", "ffmpeg" }),
-                    OSVersion.OSX => JsonPeeker(jsonObj, new string[] { "bin", "osx-64", "ffmpeg" }),
-                    OSVersion.Linux => JsonPeeker(jsonObj, new string[] { "bin", "linux-64", "ffmpeg" }),
-                    _ => throw new Exception("Your OS isn't supported")
-                };
-                var dataBytes = Task.Run(async () => await GetFileBytesAsync(ffmpegURL)).Result;
-                using (var stream = new MemoryStream(dataBytes))
-                {
-                    using (var archive = new ZipArchive(stream, ZipArchiveMode.Read))
-                    {
-                        if (archive.Entries.Count > 0)
-                        {
-                            archive.Entries[0].ExtractToFile(Path.Combine(directoryPath, archive.Entries[0].FullName), true);
-                        }
-                    }
-                }
-            }
-
-        }
-
-        internal static void DownloadFFprobe(string directoryPath = "")
-        {
-            if (string.IsNullOrEmpty(directoryPath)) { directoryPath = Directory.GetCurrentDirectory(); }
-            const string FFMPEG_API_URL = "https://ffbinaries.com/api/v1/version/latest";
-
-            string jsonData = Task.Run(async () => await new HttpClient().GetStringAsync(FFMPEG_API_URL)).Result;
-#nullable enable
-            JsonObject? jsonObj = JsonSerializer.Deserialize<JsonObject>(jsonData);
-#nullable disable
-
-            if (jsonObj != null)
-            {
-                var ffmpegURL = OSHelper.GetOSVersion() switch
-                {
-                    OSVersion.Windows => JsonPeeker(jsonObj, new string[] { "bin", "windows-64", "ffprobe" }),
-                    OSVersion.OSX => JsonPeeker(jsonObj, new string[] { "bin", "osx-64", "ffprobe" }),
-                    OSVersion.Linux => JsonPeeker(jsonObj, new string[] { "bin", "linux-64", "ffprobe" }),
-                    _ => throw new Exception("Your OS isn't supported")
-                };
-                var dataBytes = Task.Run(async () => await GetFileBytesAsync(ffmpegURL)).Result;
-                using var stream = new MemoryStream(dataBytes);
-                using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
-                if (archive.Entries.Count > 0)
-                {
-                    archive.Entries[0].ExtractToFile(Path.Combine(directoryPath, archive.Entries[0].FullName), true);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Downloads a file from the specified URI
-        /// </summary>
-        /// <param name="uri"></param>
-        /// <returns>Returns a byte array of the file that was downloaded</returns>
-        /// <exception cref="InvalidOperationException"></exception>
-        private static async Task<byte[]> GetFileBytesAsync(string uri)
-        {
-            if (!Uri.TryCreate(uri, UriKind.Absolute, out _))
-                throw new InvalidOperationException("URI is invalid.");
-
-            var httpClient = new HttpClient();
-            byte[] fileBytes = await httpClient.GetByteArrayAsync(uri);
-            return fileBytes;
-        }
-
-        /// <summary>
-        /// Checks sections of a <see cref="JsonNode"/>, stopping if it hits a null
-        /// </summary>
-        /// <param name="json">Json object you want to look through</param>
-        /// <param name="keys">List of properties you want to check through</param>
-        /// <returns>Returns the object if it could find the value, or an empty string if a result turned up null</returns>
-        private static string JsonPeeker(JsonObject json, string[] keys)
-        {
-#nullable enable
-            JsonNode? obj = null;
-#nullable disable
-            for (int i = 0; i < keys.Length; i++)
-            {
-                if (obj == null)
-                {
-                    obj = json[keys[i]] ?? null;
-                    if (obj == null) { break; }
-                }
-                else
-                {
-                    obj = obj[keys[i]] ?? null;
-                    if (obj == null) { break; }
-                }
-            }
-            var result = obj != null ? obj.ToString() : string.Empty;
-            return result;
+            archive.Entries[0].ExtractToFile(Path.Combine(directoryPath, archive.Entries[0].FullName), true);
         }
     }
+
+
+    /// <summary>
+    /// Downloads a file from the specified URI
+    /// </summary>
+    /// <param name="uri"></param>
+    /// <returns>Returns a byte array of the file that was downloaded</returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    private static async Task<byte[]> GetFileBytesAsync(string uri)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out _))
+            throw new InvalidOperationException("URI is invalid.");
+
+        var httpClient = new HttpClient();
+        byte[] fileBytes = await httpClient.GetByteArrayAsync(uri);
+        return fileBytes;
+    }
+
+    internal class FFmpegApi
+    {
+        public class Root
+        {
+            [JsonPropertyName("version")]
+            public string Version { get; set; }
+
+            [JsonPropertyName("permalink")]
+            public string Permalink { get; set; }
+
+            [JsonPropertyName("bin")]
+            public Bin Bin { get; set; }
+        }
+
+        public class Bin
+        {
+            [JsonPropertyName("windows-64")]
+            public OsBinVersion Windows64 { get; set; }
+
+            [JsonPropertyName("linux-64")]
+            public OsBinVersion Linux64 { get; set; }
+
+            [JsonPropertyName("osx-64")]
+            public OsBinVersion Osx64 { get; set; }
+        }
+
+        public class OsBinVersion
+        {
+            [JsonPropertyName("ffmpeg")]
+            public string Ffmpeg { get; set; }
+
+            [JsonPropertyName("ffprobe")]
+            public string Ffprobe { get; set; }
+        }
+        
+        public enum BinaryType
+        {
+            [EnumMember(Value = "ffmpeg")]
+            FFmpeg,
+            [EnumMember(Value = "ffprobe")]
+            FFprobe
+        }        
+    }
+
+    
 }

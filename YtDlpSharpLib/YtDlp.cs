@@ -59,8 +59,7 @@ namespace YtDlpSharpLib
         /// <summary>
         /// Gets the product version of the yt-dlp executable file.
         /// </summary>
-        public string Version
-            => FileVersionInfo.GetVersionInfo(Utils.GetFullPath(YtDlpPath)).FileVersion;
+        public string Version => FileVersionInfo.GetVersionInfo(YtDlpPath).FileVersion;
 
         /// <summary>
         /// Creates a new instance of the YoutubeDL class.
@@ -344,7 +343,7 @@ namespace YtDlpSharpLib
                 NoContinue = this.OverwriteFiles,
                 NoOverwrites = !this.OverwriteFiles,
                 NoPart = true,
-                FfmpegLocation = Utils.GetFullPath(this.FFmpegPath),
+                FfmpegLocation = FFmpegPath,
                 Exec = "echo {}",  
                 
             };
