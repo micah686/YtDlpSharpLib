@@ -20,7 +20,7 @@ public class YtDlp
 {
     private static Regex rgxFile = new Regex("echo\\s\\\"?(.*)\\\"?", RegexOptions.Compiled);
 
-    protected ProcessRunner runner;
+    private readonly ProcessRunner _runner;
 
     /// <summary>
     /// Path to the yt-dlp executable.
@@ -67,7 +67,7 @@ public class YtDlp
     /// <param name="maxNumberOfProcesses">The maximum number of concurrent yt-dlp processes.</param>
     public YtDlp(byte maxNumberOfProcesses = 4)
     {
-        runner = new ProcessRunner(maxNumberOfProcesses);
+        _runner = new ProcessRunner(maxNumberOfProcesses);
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public class YtDlp
     /// </summary>
     /// <param name="count"></param>
     /// <returns></returns>
-    public async Task SetMaxNumberOfProcesses(byte count) => await runner.SetTotalCount(count);
+    public async Task SetMaxNumberOfProcesses(byte count) => await _runner.SetTotalCount(count);
 
     #region Process methods
 
@@ -90,8 +90,8 @@ public class YtDlp
     {
         var output = new List<string>();
         var process = new YtDlpProcess(YtDlpPath);
-        process.OutputReceived += (o, e) => output.Add(e.Data);
-        (int code, string[] errors) = await runner.RunThrottled(process, urls, options, ct);
+        process.OutputReceived += (_, e) => output.Add(e.Data);
+        (int code, string[] errors) = await _runner.RunThrottled(process, urls, options, ct);
         return new RunResult<string[]>(code == 0, errors, output.ToArray());
     }
 
@@ -103,7 +103,7 @@ public class YtDlp
     {
         string output = String.Empty;
         var process = new YtDlpProcess(YtDlpPath);
-        process.OutputReceived += (o, e) => output = e.Data;
+        process.OutputReceived += (_, e) => output = e.Data;
         await process.RunAsync(null, new OptionSet() { Update = true });
         return output;
     }
@@ -128,7 +128,7 @@ public class YtDlp
         PlaylistInfo data = null;
         var process = new YtDlpProcess(YtDlpPath);
         process.OutputReceived += (o, e) => data = JsonSerializer.Deserialize<PlaylistInfo>(e.Data);
-        (int code, string[] errors) = await runner.RunThrottled(process, new[] { url }, opts, ct);
+        (int code, string[] errors) = await _runner.RunThrottled(process, new[] { url }, opts, ct);
         return new RunResult<PlaylistInfo>(code == 0, errors, data);
     }
 
@@ -153,7 +153,7 @@ public class YtDlp
         VideoInfo videoData = null;
         var process = new YtDlpProcess(YtDlpPath);
         process.OutputReceived += (o, e) => videoData = JsonSerializer.Deserialize<VideoInfo>(e.Data);
-        (int code, string[] errors) = await runner.RunThrottled(process, new[] { url }, opts, ct);
+        (int code, string[] errors) = await _runner.RunThrottled(process, new[] { url }, opts, ct);
         return new RunResult<VideoInfo>(code == 0, errors, videoData);
     }
 
@@ -178,7 +178,7 @@ public class YtDlp
             }
             output?.Report(e.Data);
         };
-        (int code, string[] errors) = await runner.RunThrottled(process, new[] { url }, options, ct, progress);
+        (int code, string[] errors) = await _runner.RunThrottled(process, new[] { url }, options, ct, progress);
         return new RunResult<string>(code == 0, errors, outputFile);
     }
 
@@ -203,7 +203,7 @@ public class YtDlp
             }
             output?.Report(e.Data);
         };
-        (int code, string[] errors) = await runner.RunThrottled(process, new[] { url }, options, ct, progress);
+        (int code, string[] errors) = await _runner.RunThrottled(process, new[] { url }, options, ct, progress);
         return new RunResult<string[]>(code == 0, errors, outputFiles.ToArray());
     }
 
