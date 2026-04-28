@@ -8,7 +8,7 @@ namespace YtDlpSharpLib.Downloads;
 public sealed record AudioPlaylistDownloadOptions
 {
     /// <summary>The audio format to extract.</summary>
-    public AudioFormat AudioFormat { get; init; } = AudioFormat.M4a;
+    public AudioConversionFormat AudioFormat { get; init; } = AudioConversionFormat.M4a;
 
     /// <summary>Optional playlist item selector, e.g., <c>"1-5,8,10-"</c>.</summary>
     public string? PlaylistItems { get; init; }

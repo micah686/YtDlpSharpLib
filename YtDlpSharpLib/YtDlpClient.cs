@@ -528,18 +528,18 @@ public sealed class YtDlpClient : IYtDlpClient
         };
     }
 
-    private static AudioConversionFormat ToAudioConversionFormat(AudioFormat audioFormat) =>
+    private static AudioConversionFormat ToAudioConversionFormat(AudioConversionFormat audioFormat) =>
         audioFormat switch
         {
-            AudioFormat.Best => AudioConversionFormat.Best,
-            AudioFormat.Aac => AudioConversionFormat.Aac,
-            AudioFormat.Alac => AudioConversionFormat.Alac,
-            AudioFormat.Flac => AudioConversionFormat.Flac,
-            AudioFormat.M4a => AudioConversionFormat.M4a,
-            AudioFormat.Mp3 => AudioConversionFormat.Mp3,
-            AudioFormat.Opus => AudioConversionFormat.Opus,
-            AudioFormat.Vorbis => AudioConversionFormat.Vorbis,
-            AudioFormat.Wav => AudioConversionFormat.Wav,
+            AudioConversionFormat.M4a => AudioConversionFormat.M4a,
+            AudioConversionFormat.Mp3 => AudioConversionFormat.Mp3,
+            AudioConversionFormat.Opus => AudioConversionFormat.Opus,
+            AudioConversionFormat.Flac => AudioConversionFormat.Flac,
+            AudioConversionFormat.Best => AudioConversionFormat.Best,
+            AudioConversionFormat.Aac => AudioConversionFormat.Aac,
+            AudioConversionFormat.Alac => AudioConversionFormat.Alac,
+            AudioConversionFormat.Vorbis => AudioConversionFormat.Vorbis,
+            AudioConversionFormat.Wav => AudioConversionFormat.Wav,
             _ => throw new ArgumentOutOfRangeException(nameof(audioFormat), audioFormat, null)
         };
 

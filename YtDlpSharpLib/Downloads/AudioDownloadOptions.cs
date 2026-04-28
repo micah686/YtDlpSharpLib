@@ -8,7 +8,7 @@ namespace YtDlpSharpLib.Downloads;
 public sealed record AudioDownloadOptions
 {
     /// <summary>The audio format to extract.</summary>
-    public AudioFormat AudioFormat { get; init; } = AudioFormat.M4a;
+    public AudioConversionFormat AudioFormat { get; init; } = AudioConversionFormat.M4a;
 
     /// <summary>The underlying yt-dlp options used to build the command line.</summary>
     public YtDlpOptions YtDlp { get; init; } = new();
