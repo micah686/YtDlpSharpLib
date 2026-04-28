@@ -49,6 +49,6 @@ public sealed record VideoInfo
     /// <summary>Chapter markers, when present.</summary>
     public IReadOnlyList<ChapterInfo>? Chapters { get; init; }
 
-    /// <summary>Subtitle tracks discovered for the video.</summary>
-    public IReadOnlyList<SubtitleTrack>? Subtitles { get; init; }
+    /// <summary>Subtitle tracks discovered for the video, keyed by language code.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<SubtitleTrack>>? Subtitles { get; init; }
 }

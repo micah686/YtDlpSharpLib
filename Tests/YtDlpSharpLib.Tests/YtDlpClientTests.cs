@@ -19,7 +19,7 @@ public sealed class YtDlpClientTests
         var factory = new FakeProcessFactory(new FakeYtDlpProcess(
             [
                 """
-                {"id":"1084537","title":"Big Buck Bunny","extractor":"vimeo","upload_date":"20080530","duration":596,"webpage_url":"https://vimeo.com/1084537","formats":[{"format_id":"http-540p","format_note":"540p","ext":"mp4","resolution":"960x540","filesize":1234567,"tbr":900.5,"vcodec":"avc1","acodec":"mp4a"}],"thumbnails":[{"id":"0","url":"https://i.vimeocdn.com/video/1.jpg","width":960,"height":540,"preference":1}],"chapters":[{"title":"Opening","start_time":0.0,"end_time":12.5}],"subtitles":[{"ext":"vtt","url":"https://example.test/subs.vtt","name":"English"}]}
+                {"id":"1084537","title":"Big Buck Bunny","extractor":"vimeo","upload_date":"20080530","duration":596,"webpage_url":"https://vimeo.com/1084537","formats":[{"format_id":"http-540p","format_note":"540p","ext":"mp4","resolution":"960x540","filesize":1234567,"tbr":900.5,"vcodec":"avc1","acodec":"mp4a"}],"thumbnails":[{"id":"0","url":"https://i.vimeocdn.com/video/1.jpg","width":960,"height":540,"preference":1}],"chapters":[{"title":"Opening","start_time":0.0,"end_time":12.5}],"subtitles":{"en":[{"ext":"vtt","url":"https://example.test/subs.vtt","name":"English"}]}}
                 """
             ]));
         var client = CreateClient(factory);
@@ -43,7 +43,8 @@ public sealed class YtDlpClientTests
         Assert.NotNull(info.Chapters);
         Assert.Single(info.Chapters);
         Assert.NotNull(info.Subtitles);
-        Assert.Single(info.Subtitles);
+        var subtitleTracks = Assert.Single(info.Subtitles).Value;
+        Assert.Single(subtitleTracks);
     }
 
     [Fact]
