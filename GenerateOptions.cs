@@ -333,6 +333,16 @@ internal static class CSharpEmitter
     private static readonly Regex ParenthesesRegex = new(@"\([^)]*\)", RegexOptions.Compiled);
     private static readonly Regex QuotedValueRegex = new("\"(?<value>[A-Za-z0-9_:+.-]+)\"", RegexOptions.Compiled);
     private static readonly Regex SupportedValueRegex = new(@"(?<value>[a-z][a-z0-9_:+.-]*)(?:\s*\(|,|$)", RegexOptions.Compiled);
+    private static readonly IReadOnlyDictionary<string, string> ManualOptionTypes =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["--audio-format"] = "AudioConversionFormat",
+            ["--convert-subs"] = "SubtitleFormat",
+            ["--merge-output-format"] = "DownloadMergeFormat",
+            ["--recode-video"] = "VideoRecodeFormat",
+            ["--remux-video"] = "VideoContainer",
+            ["--sub-format"] = "SubtitleFormat"
+        };
 
     public static IReadOnlyDictionary<string, string> Emit(IReadOnlyList<HelpSection> sections)
     {
@@ -470,6 +480,11 @@ internal static class CSharpEmitter
             return new OptionType("bool", string.Empty, true, repeated, 0, null);
         }
 
+        if (TryGetManualOptionType(option, repeated, valueTokenCount, out var manualType))
+        {
+            return manualType;
+        }
+
         if (valueTokenCount > 1)
         {
             var typeName = repeated ? "IReadOnlyList<IReadOnlyList<string>>" : "IReadOnlyList<string>?";
@@ -491,6 +506,29 @@ internal static class CSharpEmitter
         }
 
         return new OptionType($"{scalarType}?", string.Empty, false, repeated, valueTokenCount, null);
+    }
+
+    private static bool TryGetManualOptionType(
+        HelpOption option,
+        bool repeated,
+        int valueTokenCount,
+        out OptionType optionType)
+    {
+        optionType = new OptionType(string.Empty, string.Empty, false, false, 0, null);
+
+        if (!ManualOptionTypes.TryGetValue(option.Flag, out var typeName) || valueTokenCount != 1)
+        {
+            return false;
+        }
+
+        optionType = new OptionType(
+            repeated ? $"IReadOnlyList<{typeName}>" : $"{typeName}?",
+            repeated ? " = [];" : string.Empty,
+            false,
+            repeated,
+            valueTokenCount,
+            null);
+        return true;
     }
 
     private static int CountValueTokens(string valueName) =>

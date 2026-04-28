@@ -27,7 +27,7 @@ public sealed record YtDlpSubtitleOptions
 
     /// <summary>Subtitle format; accepts formats preference separated by "/", e.g. "srt" or "ass/srt/best"</summary>
     [YtDlpArgument("--sub-format", ValueName = "FORMAT", Description = "Subtitle format; accepts formats preference separated by \"/\", e.g. \"srt\" or \"ass/srt/best\"", IsGenerated = true)]
-    public string? SubFormat { get; init; }
+    public SubtitleFormat? SubFormat { get; init; }
 
     /// <summary>Languages of the subtitles to download (can be regex) or "all" separated by commas, e.g. --sub-langs "en.*,ja" (where "en.*" is a regex pattern that matches "en" followed by 0 or more of any character). You can prefix the language code with a "-" to exclude it from the requested languages, e.g. --sub-langs all,-live_chat. Use --list-subs for a list of available language tags</summary>
     [YtDlpArgument("--sub-langs", ValueName = "LANGS", Description = "Languages of the subtitles to download (can be regex) or \"all\" separated by commas, e.g. --sub-langs \"en.*,ja\" (where \"en.*\" is a regex pattern that matches \"en\" followed by 0 or more of any character). You can prefix the language code with a \"-\" to exclude it from the requested languages, e.g. --sub-langs all,-live_chat. Use --list-subs for a list of available language tags", IsGenerated = true)]

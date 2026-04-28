@@ -27,11 +27,20 @@ public sealed class RendererTests
                 },
                 VideoFormat = new YtDlpVideoFormatOptions
                 {
-                    Format = "best"
+                    Format = "best",
+                    MergeOutputFormat = DownloadMergeFormat.Mp4
+                },
+                Subtitle = new YtDlpSubtitleOptions
+                {
+                    SubFormat = SubtitleFormat.Srt
                 },
                 PostProcessing = new YtDlpPostProcessingOptions
                 {
                     ExtractAudio = true,
+                    AudioFormat = AudioConversionFormat.Mp3,
+                    RemuxVideo = VideoContainer.Mkv,
+                    RecodeVideo = VideoRecodeFormat.Mp4,
+                    ConvertSubs = SubtitleFormat.Vtt,
                     Fixup = YtDlpPostProcessingFixup.DetectOrWarn
                 },
                 AdvancedArguments =
@@ -55,9 +64,21 @@ public sealed class RendererTests
                     "1.25",
                     "--format",
                     "best",
+                    "--merge-output-format",
+                    "mp4",
+                    "--sub-format",
+                    "srt",
                     "--extract-audio",
+                    "--audio-format",
+                    "mp3",
+                    "--remux-video",
+                    "mkv",
+                    "--recode-video",
+                    "mp4",
                     "--fixup",
                     "detect_or_warn",
+                    "--convert-subs",
+                    "vtt",
                     "--custom",
                     "first",
                     "second"

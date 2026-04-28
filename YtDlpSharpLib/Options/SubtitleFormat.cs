@@ -1,19 +1,31 @@
 namespace YtDlpSharpLib.Options;
 
 /// <summary>
-/// Enumerates subtitle formats supported by yt-dlp's <c>--sub-format</c> flag.
+/// Subtitle formats accepted by yt-dlp subtitle format and conversion options.
 /// </summary>
 public enum SubtitleFormat
 {
-    /// <summary>SubRip subtitle format (.srt).</summary>
-    Srt,
-
-    /// <summary>WebVTT subtitle format (.vtt).</summary>
-    Vtt,
-
-    /// <summary>Advanced SubStation Alpha (.ass).</summary>
-    Ass,
+    /// <summary>Disable subtitle conversion where supported.</summary>
+    [YtDlpEnumValue("none")]
+    None,
 
     /// <summary>Best available subtitle format selected by yt-dlp.</summary>
-    Best
+    [YtDlpEnumValue("best")]
+    Best,
+
+    /// <summary>Advanced SubStation Alpha subtitles.</summary>
+    [YtDlpEnumValue("ass")]
+    Ass,
+
+    /// <summary>LyRiCs subtitle format.</summary>
+    [YtDlpEnumValue("lrc")]
+    Lrc,
+
+    /// <summary>SubRip subtitles.</summary>
+    [YtDlpEnumValue("srt")]
+    Srt,
+
+    /// <summary>WebVTT subtitles.</summary>
+    [YtDlpEnumValue("vtt")]
+    Vtt
 }

@@ -1,9 +1,9 @@
 namespace YtDlpSharpLib.Options;
 
 /// <summary>
-/// Enumerates audio formats supported by yt-dlp's <c>--audio-format</c> flag.
+/// Audio conversion formats accepted by yt-dlp's <c>--audio-format</c> option.
 /// </summary>
-public enum AudioFormat
+public enum AudioConversionFormat
 {
     /// <summary>Let yt-dlp choose the best available audio output format.</summary>
     [YtDlpEnumValue("best")]
@@ -21,15 +21,15 @@ public enum AudioFormat
     [YtDlpEnumValue("flac")]
     Flac,
 
-    /// <summary>MPEG-4 audio container (.m4a).</summary>
+    /// <summary>MPEG-4 audio container.</summary>
     [YtDlpEnumValue("m4a")]
     M4a,
 
-    /// <summary>MP3 audio (.mp3).</summary>
+    /// <summary>MP3 audio.</summary>
     [YtDlpEnumValue("mp3")]
     Mp3,
 
-    /// <summary>Opus audio (.opus).</summary>
+    /// <summary>Opus audio.</summary>
     [YtDlpEnumValue("opus")]
     Opus,
 

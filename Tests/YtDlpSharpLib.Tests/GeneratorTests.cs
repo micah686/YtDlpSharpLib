@@ -20,8 +20,18 @@ public sealed class GeneratorTests
             Assert.Contains("public IReadOnlyList<IReadOnlyList<string>> Alias", general);
 
             var postProcessing = await File.ReadAllTextAsync(Path.Combine(outputDir, "YtDlpPostProcessingOptions.g.cs"));
+            Assert.Contains("public AudioConversionFormat? AudioFormat", postProcessing);
+            Assert.Contains("public VideoContainer? RemuxVideo", postProcessing);
+            Assert.Contains("public VideoRecodeFormat? RecodeVideo", postProcessing);
+            Assert.Contains("public SubtitleFormat? ConvertSubs", postProcessing);
             Assert.Contains("public enum YtDlpPostProcessingFixup", postProcessing);
             Assert.Contains("[YtDlpEnumValue(\"detect_or_warn\")]", postProcessing);
+
+            var videoFormat = await File.ReadAllTextAsync(Path.Combine(outputDir, "YtDlpVideoFormatOptions.g.cs"));
+            Assert.Contains("public DownloadMergeFormat? MergeOutputFormat", videoFormat);
+
+            var subtitle = await File.ReadAllTextAsync(Path.Combine(outputDir, "YtDlpSubtitleOptions.g.cs"));
+            Assert.Contains("public SubtitleFormat? SubFormat", subtitle);
 
             var root = await File.ReadAllTextAsync(Path.Combine(outputDir, "YtDlpOptions.Generated.g.cs"));
             Assert.Contains("public YtDlpSponsorBlockOptions SponsorBlock", root);

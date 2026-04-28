@@ -161,7 +161,7 @@ public sealed class YtDlpClient : IYtDlpClient
             PostProcessing = ytDlp.PostProcessing with
             {
                 ExtractAudio = true,
-                AudioFormat = RenderAudioFormat(resolved.AudioFormat)
+                AudioFormat = ToAudioConversionFormat(resolved.AudioFormat)
             }
         };
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
@@ -209,7 +209,7 @@ public sealed class YtDlpClient : IYtDlpClient
             PostProcessing = ytDlp.PostProcessing with
             {
                 ExtractAudio = true,
-                AudioFormat = RenderAudioFormat(resolved.AudioFormat)
+                AudioFormat = ToAudioConversionFormat(resolved.AudioFormat)
             },
             VideoSelection = ytDlp.VideoSelection with
             {
@@ -528,8 +528,20 @@ public sealed class YtDlpClient : IYtDlpClient
         };
     }
 
-    private static string RenderAudioFormat(AudioFormat audioFormat) =>
-        audioFormat.ToString().ToLowerInvariant();
+    private static AudioConversionFormat ToAudioConversionFormat(AudioFormat audioFormat) =>
+        audioFormat switch
+        {
+            AudioFormat.Best => AudioConversionFormat.Best,
+            AudioFormat.Aac => AudioConversionFormat.Aac,
+            AudioFormat.Alac => AudioConversionFormat.Alac,
+            AudioFormat.Flac => AudioConversionFormat.Flac,
+            AudioFormat.M4a => AudioConversionFormat.M4a,
+            AudioFormat.Mp3 => AudioConversionFormat.Mp3,
+            AudioFormat.Opus => AudioConversionFormat.Opus,
+            AudioFormat.Vorbis => AudioConversionFormat.Vorbis,
+            AudioFormat.Wav => AudioConversionFormat.Wav,
+            _ => throw new ArgumentOutOfRangeException(nameof(audioFormat), audioFormat, null)
+        };
 
     private YtDlpProcessStartInfo BuildDownloadStartInfo(
         YtDlpOptions options,

@@ -11,7 +11,7 @@ public sealed record YtDlpPostProcessingOptions
 
     /// <summary>Format to convert the audio to when -x is used. (currently supported: best (default), aac, alac, flac, m4a, mp3, opus, vorbis, wav). You can specify multiple rules using similar syntax as --remux-video</summary>
     [YtDlpArgument("--audio-format", ValueName = "FORMAT", Description = "Format to convert the audio to when -x is used. (currently supported: best (default), aac, alac, flac, m4a, mp3, opus, vorbis, wav). You can specify multiple rules using similar syntax as --remux-video", IsGenerated = true)]
-    public string? AudioFormat { get; init; }
+    public AudioConversionFormat? AudioFormat { get; init; }
 
     /// <summary>Specify ffmpeg audio quality to use when converting the audio with -x. Insert a value between 0 (best) and 10 (worst) for VBR or a specific bitrate like 128K (default 5)</summary>
     [YtDlpArgument("--audio-quality", ValueName = "QUALITY", Description = "Specify ffmpeg audio quality to use when converting the audio with -x. Insert a value between 0 (best) and 10 (worst) for VBR or a specific bitrate like 128K (default 5)", IsGenerated = true)]
@@ -19,11 +19,11 @@ public sealed record YtDlpPostProcessingOptions
 
     /// <summary>Remux the video into another container if necessary (currently supported: avi, flv, gif, mkv, mov, mp4, webm, aac, aiff, alac, flac, m4a, mka, mp3, ogg, opus, vorbis, wav). If the target container does not support the video/audio codec, remuxing will fail. You can specify multiple rules; e.g. "aac&gt;m4a/mov&gt;mp4/mkv" will remux aac to m4a, mov to mp4 and anything else to mkv</summary>
     [YtDlpArgument("--remux-video", ValueName = "FORMAT", Description = "Remux the video into another container if necessary (currently supported: avi, flv, gif, mkv, mov, mp4, webm, aac, aiff, alac, flac, m4a, mka, mp3, ogg, opus, vorbis, wav). If the target container does not support the video/audio codec, remuxing will fail. You can specify multiple rules; e.g. \"aac>m4a/mov>mp4/mkv\" will remux aac to m4a, mov to mp4 and anything else to mkv", IsGenerated = true)]
-    public string? RemuxVideo { get; init; }
+    public VideoContainer? RemuxVideo { get; init; }
 
     /// <summary>Re-encode the video into another format if necessary. The syntax and supported formats are the same as --remux-video</summary>
     [YtDlpArgument("--recode-video", ValueName = "FORMAT", Description = "Re-encode the video into another format if necessary. The syntax and supported formats are the same as --remux-video", IsGenerated = true)]
-    public string? RecodeVideo { get; init; }
+    public VideoRecodeFormat? RecodeVideo { get; init; }
 
     /// <summary>Give these arguments to the postprocessors. Specify the postprocessor/executable name and the arguments separated by a colon ":" to give the argument to the specified postprocessor/executable. Supported PP are: Merger, ModifyChapters, SplitChapters, ExtractAudio, VideoRemuxer, VideoConvertor, Metadata, EmbedSubtitle, EmbedThumbnail, SubtitlesConvertor, ThumbnailsConvertor, FixupStretched, FixupM4a, FixupM3u8, FixupTimestamp and FixupDuration. The supported executables are: AtomicParsley, FFmpeg and FFprobe. You can also specify "PP+EXE:ARGS" to give the arguments to the specified executable only when being used by the specified postprocessor. Additionally, for ffmpeg/ffprobe, "_i"/"_o" can be appended to the prefix optionally followed by a number to pass the argument before the specified input/output file, e.g. --ppa "Merger+ffmpeg_i1:-v quiet". You can use this option multiple times to give different arguments to different postprocessors. (Alias: --ppa)</summary>
     [YtDlpArgument("--postprocessor-args", AllowMultiple = true, Aliases = new[] { "--ppa" }, ValueName = "NAME:ARGS", Description = "Give these arguments to the postprocessors. Specify the postprocessor/executable name and the arguments separated by a colon \":\" to give the argument to the specified postprocessor/executable. Supported PP are: Merger, ModifyChapters, SplitChapters, ExtractAudio, VideoRemuxer, VideoConvertor, Metadata, EmbedSubtitle, EmbedThumbnail, SubtitlesConvertor, ThumbnailsConvertor, FixupStretched, FixupM4a, FixupM3u8, FixupTimestamp and FixupDuration. The supported executables are: AtomicParsley, FFmpeg and FFprobe. You can also specify \"PP+EXE:ARGS\" to give the arguments to the specified executable only when being used by the specified postprocessor. Additionally, for ffmpeg/ffprobe, \"_i\"/\"_o\" can be appended to the prefix optionally followed by a number to pass the argument before the specified input/output file, e.g. --ppa \"Merger+ffmpeg_i1:-v quiet\". You can use this option multiple times to give different arguments to different postprocessors. (Alias: --ppa)", IsGenerated = true)]
@@ -119,7 +119,7 @@ public sealed record YtDlpPostProcessingOptions
 
     /// <summary>Convert the subtitles to another format (currently supported: ass, lrc, srt, vtt). Use "--convert-subs none" to disable conversion (default) (Alias: --convert-subtitles)</summary>
     [YtDlpArgument("--convert-subs", Aliases = new[] { "--convert-subtitles" }, ValueName = "FORMAT", Description = "Convert the subtitles to another format (currently supported: ass, lrc, srt, vtt). Use \"--convert-subs none\" to disable conversion (default) (Alias: --convert-subtitles)", IsGenerated = true)]
-    public string? ConvertSubs { get; init; }
+    public SubtitleFormat? ConvertSubs { get; init; }
 
     /// <summary>Convert the thumbnails to another format (currently supported: jpg, png, webp). You can specify multiple rules using similar syntax as "--remux-video". Use "--convert-thumbnails none" to disable conversion (default)</summary>
     [YtDlpArgument("--convert-thumbnails", ValueName = "FORMAT", Description = "Convert the thumbnails to another format (currently supported: jpg, png, webp). You can specify multiple rules using similar syntax as \"--remux-video\". Use \"--convert-thumbnails none\" to disable conversion (default)", IsGenerated = true)]

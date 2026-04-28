@@ -67,5 +67,5 @@ public sealed record YtDlpVideoFormatOptions
 
     /// <summary>Containers that may be used when merging formats, separated by "/", e.g. "mp4/mkv". Ignored if no merge is required. (currently supported: avi, flv, mkv, mov, mp4, webm)</summary>
     [YtDlpArgument("--merge-output-format", ValueName = "FORMAT", Description = "Containers that may be used when merging formats, separated by \"/\", e.g. \"mp4/mkv\". Ignored if no merge is required. (currently supported: avi, flv, mkv, mov, mp4, webm)", IsGenerated = true)]
-    public string? MergeOutputFormat { get; init; }
+    public DownloadMergeFormat? MergeOutputFormat { get; init; }
 }
