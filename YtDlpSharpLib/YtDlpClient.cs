@@ -15,8 +15,6 @@ using YtDlpSharpLib.Progress;
 using YtDlpSharpLib.Rendering;
 using YtDlpSharpLib.Internal;
 
-#pragma warning disable CS0618 // High-level convenience APIs preserve legacy option aliases.
-
 namespace YtDlpSharpLib;
 
 /// <summary>
@@ -160,10 +158,10 @@ public sealed class YtDlpClient : IYtDlpClient
         var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
         ytDlp = ytDlp with
         {
-            Format = ytDlp.Format with
+            PostProcessing = ytDlp.PostProcessing with
             {
                 ExtractAudio = true,
-                AudioFormat = resolved.AudioFormat
+                AudioFormat = RenderAudioFormat(resolved.AudioFormat)
             }
         };
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
@@ -184,10 +182,10 @@ public sealed class YtDlpClient : IYtDlpClient
         var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
         ytDlp = ytDlp with
         {
-            Playlist = ytDlp.Playlist with
+            VideoSelection = ytDlp.VideoSelection with
             {
                 YesPlaylist = true,
-                PlaylistItems = resolved.PlaylistItems ?? ytDlp.Playlist.PlaylistItems
+                PlaylistItems = resolved.PlaylistItems ?? ytDlp.VideoSelection.PlaylistItems
             }
         };
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
@@ -208,15 +206,15 @@ public sealed class YtDlpClient : IYtDlpClient
         var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
         ytDlp = ytDlp with
         {
-            Format = ytDlp.Format with
+            PostProcessing = ytDlp.PostProcessing with
             {
                 ExtractAudio = true,
-                AudioFormat = resolved.AudioFormat
+                AudioFormat = RenderAudioFormat(resolved.AudioFormat)
             },
-            Playlist = ytDlp.Playlist with
+            VideoSelection = ytDlp.VideoSelection with
             {
                 YesPlaylist = true,
-                PlaylistItems = resolved.PlaylistItems ?? ytDlp.Playlist.PlaylistItems
+                PlaylistItems = resolved.PlaylistItems ?? ytDlp.VideoSelection.PlaylistItems
             }
         };
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
@@ -236,16 +234,22 @@ public sealed class YtDlpClient : IYtDlpClient
         var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
         ytDlp = ytDlp with
         {
-            Metadata = ytDlp.Metadata with
+            Filesystem = ytDlp.Filesystem with
             {
-                WriteInfoJson = true,
-                SkipDownload = true,
-                WriteThumbnail = ytDlp.Metadata.WriteThumbnail || resolved.WriteThumbnail
+                WriteInfoJson = true
             },
-            Subtitles = ytDlp.Subtitles with
+            Thumbnail = ytDlp.Thumbnail with
             {
-                WriteSubtitles = ytDlp.Subtitles.WriteSubtitles || resolved.WriteSubtitles,
-                Languages = ytDlp.Subtitles.Languages ?? resolved.SubtitleLanguages
+                WriteThumbnail = ytDlp.Thumbnail.WriteThumbnail || resolved.WriteThumbnail
+            },
+            Subtitle = ytDlp.Subtitle with
+            {
+                WriteSubs = ytDlp.Subtitle.WriteSubs || resolved.WriteSubtitles,
+                SubLangs = ytDlp.Subtitle.SubLangs ?? resolved.SubtitleLanguages
+            },
+            VerbositySimulation = ytDlp.VerbositySimulation with
+            {
+                SkipDownload = true
             }
         };
 
@@ -266,12 +270,12 @@ public sealed class YtDlpClient : IYtDlpClient
         var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
         ytDlp = ytDlp with
         {
-            Subtitles = ytDlp.Subtitles with
+            Subtitle = ytDlp.Subtitle with
             {
-                WriteSubtitles = true,
-                Languages = "live_chat"
+                WriteSubs = true,
+                SubLangs = "live_chat"
             },
-            Metadata = ytDlp.Metadata with
+            VerbositySimulation = ytDlp.VerbositySimulation with
             {
                 SkipDownload = true
             }
@@ -513,23 +517,19 @@ public sealed class YtDlpClient : IYtDlpClient
 
     private static YtDlpOptions ApplyDownloadDefaults(YtDlpOptions options, string outputDirectory)
     {
-        var hasHomePath = options.Output.Paths.Any(static p => p.Kind == YtDlpPathKind.Home);
-        if (hasHomePath)
+        if (!string.IsNullOrWhiteSpace(options.Filesystem.Paths))
         {
             return options;
         }
 
-        var paths = new List<YtDlpPathMapping>(options.Output.Paths.Count + 1)
-        {
-            new() { Kind = YtDlpPathKind.Home, Path = outputDirectory }
-        };
-        paths.AddRange(options.Output.Paths);
-
         return options with
         {
-            Output = options.Output with { Paths = paths }
+            Filesystem = options.Filesystem with { Paths = $"home:{outputDirectory}" }
         };
     }
+
+    private static string RenderAudioFormat(AudioFormat audioFormat) =>
+        audioFormat.ToString().ToLowerInvariant();
 
     private YtDlpProcessStartInfo BuildDownloadStartInfo(
         YtDlpOptions options,

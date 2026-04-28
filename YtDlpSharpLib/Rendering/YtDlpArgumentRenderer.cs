@@ -175,12 +175,6 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
         value switch
         {
             string text => text,
-            FormatSelector selector => selector.Value,
-            OutputTemplate template => template.Value,
-            YtDlpPathMapping path => $"{RenderPathKind(path.Kind)}:{path.Path}",
-            VideoContainer container => RenderEnum(container),
-            AudioFormat format => RenderEnum(format),
-            SubtitleFormat format => RenderEnum(format),
             Enum otherEnum => RenderAttributedEnum(otherEnum),
             IFormattable formattable => formattable.ToString(format: null, CultureInfo.InvariantCulture),
             _ => Convert.ToString(value, CultureInfo.InvariantCulture)
@@ -194,19 +188,4 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
 
         return attribute?.Value ?? value.ToString().ToLowerInvariant();
     }
-
-    private static string RenderPathKind(YtDlpPathKind kind) =>
-        kind switch
-        {
-            YtDlpPathKind.Home => "home",
-            YtDlpPathKind.Temp => "temp",
-            YtDlpPathKind.Subtitle => "subtitle",
-            YtDlpPathKind.Thumbnail => "thumbnail",
-            YtDlpPathKind.InfoJson => "infojson",
-            _ => throw new YtDlpValidationException($"Unsupported path kind '{kind}'.")
-        };
-
-    private static string RenderEnum<T>(T value)
-        where T : struct, Enum =>
-        value.ToString().ToLowerInvariant();
 }
