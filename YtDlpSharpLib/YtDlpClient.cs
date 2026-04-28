@@ -15,6 +15,8 @@ using YtDlpSharpLib.Progress;
 using YtDlpSharpLib.Rendering;
 using YtDlpSharpLib.Internal;
 
+#pragma warning disable CS0618 // High-level convenience APIs preserve legacy option aliases.
+
 namespace YtDlpSharpLib;
 
 /// <summary>

@@ -1,0 +1,24 @@
+Usage: yt-dlp [OPTIONS] URL [URL...]
+
+Options:
+
+  General Options:
+    --config-locations PATH         Location of the main configuration file.
+                                    Can be used multiple times
+    --alias ALIASES OPTIONS         Create aliases for an option string. This
+                                    option can be used multiple times
+
+  Network Options:
+    --socket-timeout SECONDS        Time to wait before giving up, in seconds
+    --force-ipv4                    Make all connections via IPv4
+
+  Post-Processing Options:
+    --fixup POLICY                  Automatically correct known faults of the
+                                    file. One of never (do nothing), warn (only
+                                    emit a warning), detect_or_warn (the
+                                    default), force (try fixing even if the file
+                                    already exists)
+
+  SponsorBlock Options:
+    --sponsorblock-mark CATS        SponsorBlock categories to create chapters
+                                    for, separated by commas

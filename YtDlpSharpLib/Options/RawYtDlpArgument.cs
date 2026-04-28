@@ -12,6 +12,9 @@ public sealed record RawYtDlpArgument
     /// <summary>An optional value to follow the flag.</summary>
     public string? Value { get; init; }
 
+    /// <summary>Additional value tokens to follow the flag, for advanced multi-argument options.</summary>
+    public IReadOnlyList<string> Values { get; init; } = [];
+
     /// <summary>
     /// Indicates the value is sensitive (cookies, tokens) and should be redacted in logs/exception messages.
     /// </summary>

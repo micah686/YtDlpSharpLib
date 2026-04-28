@@ -19,19 +19,36 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
 
         var args = new List<string>();
 
-        RenderGroup(args, options.Format);
-        RenderGroup(args, options.Output);
-        RenderGroup(args, options.Subtitles);
-        RenderGroup(args, options.Metadata);
-        RenderGroup(args, options.Playlist);
+        foreach (var group in GetOptionGroups(options))
+        {
+            RenderGroup(args, group);
+        }
+
         RenderAdvanced(args, options.AdvancedArguments);
 
         return args;
     }
 
+    private static IEnumerable<object> GetOptionGroups(YtDlpOptions options) =>
+        options.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(property => new
+            {
+                Property = property,
+                Group = property.GetCustomAttribute<YtDlpOptionGroupAttribute>()
+            })
+            .Where(item => item.Group is not null)
+            .OrderBy(item => item.Group!.Order)
+            .ThenBy(item => item.Property.MetadataToken)
+            .Select(item => item.Property.GetValue(options))
+            .Where(static value => value is not null)
+            .Select(static value => value!);
+
     private static void RenderGroup(List<string> args, object group)
     {
-        foreach (var property in group.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var property in group.GetType()
+                     .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                     .OrderBy(static property => property.MetadataToken))
         {
             var attribute = property.GetCustomAttribute<YtDlpArgumentAttribute>();
             if (attribute is null)
@@ -52,6 +69,12 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
                     args.Add(attribute.Name);
                 }
 
+                continue;
+            }
+
+            if (attribute.ValueTokenCount > 1)
+            {
+                RenderMultiValue(args, attribute, value);
                 continue;
             }
 
@@ -76,6 +99,54 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
         }
     }
 
+    private static void RenderMultiValue(List<string> args, YtDlpArgumentAttribute attribute, object value)
+    {
+        if (attribute.AllowMultiple)
+        {
+            if (value is string || value is not IEnumerable rows)
+            {
+                throw new YtDlpValidationException(
+                    $"Argument '{attribute.Name}' expects a sequence of value token sequences.");
+            }
+
+            foreach (var row in rows)
+            {
+                if (row is null)
+                {
+                    continue;
+                }
+
+                RenderMultiValueRow(args, attribute, row);
+            }
+
+            return;
+        }
+
+        RenderMultiValueRow(args, attribute, value);
+    }
+
+    private static void RenderMultiValueRow(List<string> args, YtDlpArgumentAttribute attribute, object value)
+    {
+        if (value is string || value is not IEnumerable sequence)
+        {
+            throw new YtDlpValidationException(
+                $"Argument '{attribute.Name}' expects {attribute.ValueTokenCount} value tokens.");
+        }
+
+        var values = sequence.Cast<object?>().Where(static item => item is not null).ToArray();
+        if (values.Length != attribute.ValueTokenCount)
+        {
+            throw new YtDlpValidationException(
+                $"Argument '{attribute.Name}' expects {attribute.ValueTokenCount} value tokens, but got {values.Length}.");
+        }
+
+        args.Add(attribute.Name);
+        foreach (var item in values)
+        {
+            args.Add(RenderValue(item!));
+        }
+    }
+
     private static void RenderAdvanced(List<string> args, IReadOnlyList<RawYtDlpArgument> advancedArguments)
     {
         foreach (var argument in advancedArguments)
@@ -92,6 +163,11 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
             {
                 args.Add(argument.Value);
             }
+
+            foreach (var value in argument.Values)
+            {
+                args.Add(value);
+            }
         }
     }
 
@@ -105,11 +181,19 @@ public sealed class YtDlpArgumentRenderer : IYtDlpArgumentRenderer
             VideoContainer container => RenderEnum(container),
             AudioFormat format => RenderEnum(format),
             SubtitleFormat format => RenderEnum(format),
-            Enum otherEnum => otherEnum.ToString().ToLowerInvariant(),
+            Enum otherEnum => RenderAttributedEnum(otherEnum),
             IFormattable formattable => formattable.ToString(format: null, CultureInfo.InvariantCulture),
             _ => Convert.ToString(value, CultureInfo.InvariantCulture)
                 ?? throw new YtDlpValidationException($"Could not render value '{value}'.")
         };
+
+    private static string RenderAttributedEnum(Enum value)
+    {
+        var field = value.GetType().GetField(value.ToString());
+        var attribute = field?.GetCustomAttribute<YtDlpEnumValueAttribute>();
+
+        return attribute?.Value ?? value.ToString().ToLowerInvariant();
+    }
 
     private static string RenderPathKind(YtDlpPathKind kind) =>
         kind switch
