@@ -10,7 +10,8 @@ namespace YtDlpSharpLib.IntegrationTests;
 [NotInParallel]
 public sealed class DownloadIntegrationTests
 {
-    private const string VideoUrl = "https://vimeo.com/1084537";
+    private const string VimeoUrl = "https://vimeo.com/1084537";
+    private const string YouTubeUrl = "https://www.youtube.com/watch?v=C0DPdy98e4c";
 
     [Test]
     public async Task GetVideoInfoAsync_ReturnsMetadataForVimeoVideo()
@@ -19,12 +20,29 @@ public sealed class DownloadIntegrationTests
         await using var workspace = TemporaryWorkspace.Create();
 
         var client = environment.CreateClient();
-        var info = await client.GetVideoInfoAsync(VideoUrl);
+        var info = await client.GetVideoInfoAsync(VimeoUrl);
 
         await Assert.That(info.Id).IsEqualTo("1084537");
         await Assert.That(info.Title).IsNotEmpty();
         await Assert.That(info.Extractor).Contains("vimeo", StringComparison.OrdinalIgnoreCase);
-        await Assert.That(info.WebpageUrl).IsEqualTo(VideoUrl);
+        await Assert.That(info.WebpageUrl).IsEqualTo(VimeoUrl);
+        await Assert.That(info.Formats).IsNotEmpty();
+    }
+
+    [Test]
+    public async Task GetVideoInfoAsync_ReturnsMetadataForBluegramsYouTubeVideo()
+    {
+        var environment = await IntegrationTestEnvironment.GetAsync();
+        await using var workspace = TemporaryWorkspace.Create();
+
+        var client = environment.CreateClient();
+        var info = await client.GetVideoInfoAsync(YouTubeUrl);
+
+        await Assert.That(info.Id).IsEqualTo("C0DPdy98e4c");
+        await Assert.That(info.Title).IsEqualTo("TEST VIDEO");
+        await Assert.That(info.Extractor).Contains("youtube", StringComparison.OrdinalIgnoreCase);
+        await Assert.That(info.UploadDate).IsEqualTo("20070221");
+        await Assert.That(info.ParsedUploadDate).IsEqualTo(new DateOnly(2007, 2, 21));
         await Assert.That(info.Formats).IsNotEmpty();
     }
 
@@ -36,7 +54,7 @@ public sealed class DownloadIntegrationTests
 
         var client = environment.CreateClient();
         await client.DownloadAsync(
-            VideoUrl,
+            VimeoUrl,
             workspace.Path,
             new DownloadOptions
             {
@@ -69,7 +87,7 @@ public sealed class DownloadIntegrationTests
 
         var client = environment.CreateClient();
         await client.DownloadAudioAsync(
-            VideoUrl,
+            VimeoUrl,
             workspace.Path,
             new AudioDownloadOptions
             {
@@ -98,7 +116,7 @@ public sealed class DownloadIntegrationTests
 
         var client = environment.CreateClient();
         await client.DownloadAsync(
-            VideoUrl,
+            VimeoUrl,
             workspace.Path,
             new DownloadOptions
             {
@@ -135,7 +153,7 @@ public sealed class DownloadIntegrationTests
 
         var client = environment.CreateClient();
         await client.DownloadMetadataAsync(
-            VideoUrl,
+            VimeoUrl,
             workspace.Path,
             new MetadataDownloadOptions
             {
@@ -153,6 +171,105 @@ public sealed class DownloadIntegrationTests
         await Assert.That(infoJson).Count().IsEqualTo(1);
         await Assert.That(Directory.GetFiles(workspace.Path, "*.mp4", SearchOption.TopDirectoryOnly)).IsEmpty();
         await Assert.That(Directory.GetFiles(workspace.Path, "*.webm", SearchOption.TopDirectoryOnly)).IsEmpty();
+    }
+
+    [Test]
+    public async Task DownloadAsync_DownloadsBluegramsYouTubeVideoToMkv()
+    {
+        var environment = await IntegrationTestEnvironment.GetAsync();
+        await using var workspace = TemporaryWorkspace.Create();
+
+        var client = environment.CreateClient();
+        await client.DownloadAsync(
+            YouTubeUrl,
+            workspace.Path,
+            new DownloadOptions
+            {
+                YtDlp = environment.WithFfmpeg(new YtDlpOptions
+                {
+                    Filesystem = new YtDlpFilesystemOptions
+                    {
+                        Output = "%(title)s.%(ext)s"
+                    },
+                    Download = ShortSection,
+                    VideoFormat = new YtDlpVideoFormatOptions
+                    {
+                        Format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                        MergeOutputFormat = DownloadMergeFormat.Mkv
+                    }
+                })
+            });
+
+        var file = await workspace.SingleMediaFileAsync();
+        await Assert.That(File.Exists(file)).IsTrue();
+        await Assert.That(Path.GetExtension(file)).IsEqualTo(".mkv");
+        await Assert.That(Path.GetFileNameWithoutExtension(file)).IsEqualTo("TEST VIDEO");
+    }
+
+    [Test]
+    public async Task DownloadAudioAsync_ExtractsBluegramsYouTubeMp3()
+    {
+        var environment = await IntegrationTestEnvironment.GetAsync();
+        await using var workspace = TemporaryWorkspace.Create();
+
+        var client = environment.CreateClient();
+        await client.DownloadAudioAsync(
+            YouTubeUrl,
+            workspace.Path,
+            new AudioDownloadOptions
+            {
+                AudioFormat = AudioConversionFormat.Mp3,
+                YtDlp = environment.WithFfmpeg(new YtDlpOptions
+                {
+                    Filesystem = new YtDlpFilesystemOptions
+                    {
+                        Output = "%(title)s.%(ext)s"
+                    },
+                    Download = ShortSection
+                })
+            });
+
+        var file = await workspace.SingleMediaFileAsync();
+        await Assert.That(File.Exists(file)).IsTrue();
+        await Assert.That(Path.GetExtension(file)).IsEqualTo(".mp3");
+        await Assert.That(Path.GetFileNameWithoutExtension(file)).IsEqualTo("TEST VIDEO");
+    }
+
+    [Test]
+    public async Task DownloadAsync_UsesBluegramsYouTubeOutputTemplateAndRecodeFormat()
+    {
+        var environment = await IntegrationTestEnvironment.GetAsync();
+        await using var workspace = TemporaryWorkspace.Create();
+
+        var client = environment.CreateClient();
+        await client.DownloadAsync(
+            YouTubeUrl,
+            workspace.Path,
+            new DownloadOptions
+            {
+                YtDlp = environment.WithFfmpeg(new YtDlpOptions
+                {
+                    Filesystem = new YtDlpFilesystemOptions
+                    {
+                        Output = "%(extractor)s_%(title)s_%(upload_date)s.%(ext)s",
+                        RestrictFilenames = true
+                    },
+                    Download = ShortSection,
+                    VideoFormat = new YtDlpVideoFormatOptions
+                    {
+                        Format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                    },
+                    PostProcessing = new YtDlpPostProcessingOptions
+                    {
+                        RecodeVideo = VideoRecodeFormat.Mp4
+                    }
+                })
+            });
+
+        var file = await workspace.SingleMediaFileAsync();
+        await Assert.That(File.Exists(file)).IsTrue();
+        await Assert.That(Path.GetExtension(file)).IsEqualTo(".mp4");
+        await Assert.That(Path.GetFileNameWithoutExtension(file)).IsEqualTo("youtube_TEST_VIDEO_20070221");
     }
 
     private sealed class IntegrationTestEnvironment
