@@ -37,11 +37,22 @@ public interface IYtDlpClient
     /// <summary>Retrieves structured video information without downloading any media.</summary>
     Task<VideoInfo> GetVideoInfoAsync(string url, CancellationToken ct = default);
 
+    /// <summary>Retrieves structured video information without throwing for yt-dlp process failures.</summary>
+    Task<RunResult<VideoInfo>> TryGetVideoInfoAsync(string url, CancellationToken ct = default);
+
     /// <summary>Streams video metadata for each entry of a playlist.</summary>
     IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(string url, CancellationToken ct = default);
 
     /// <summary>Downloads a video, optionally reporting progress through the supplied callback.</summary>
     Task DownloadAsync(
+        string url,
+        string outputDirectory,
+        DownloadOptions? options = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>Downloads a video without throwing for yt-dlp process failures.</summary>
+    Task<RunResult> TryDownloadAsync(
         string url,
         string outputDirectory,
         DownloadOptions? options = null,

@@ -6,6 +6,10 @@ namespace YtDlpSharpLib.Options;
 /// </summary>
 public sealed partial record YtDlpOptions
 {
+    /// <summary>Deprecated legacy options accepted for older youtube-dl/yt-dlp config compatibility.</summary>
+    [YtDlpOptionGroup(200)]
+    public YtDlpDeprecatedOptions Deprecated { get; init; } = new();
+
     /// <summary>Advanced escape hatch for unsupported yt-dlp flags.</summary>
     public IReadOnlyList<RawYtDlpArgument> AdvancedArguments { get; init; } = [];
 

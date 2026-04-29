@@ -322,6 +322,91 @@ public sealed class YtDlpClientTests
     }
 
     [Fact]
+    public async Task TryGetVideoInfoAsync_ReturnsDataOnSuccess()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess(
+            [
+                MinimalVideoJson("one", "First clip")
+            ]));
+        var client = CreateClient(factory);
+
+        var result = await client.TryGetVideoInfoAsync(VimeoUrl);
+
+        Assert.True(result.Success);
+        Assert.Equal(string.Empty, result.ErrorOutput);
+        Assert.NotNull(result.Data);
+        Assert.Equal("First clip", result.Data.Title);
+    }
+
+    [Fact]
+    public async Task TryGetVideoInfoAsync_ReturnsErrorOutputOnProcessFailure()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess(
+            stderrLines:
+            [
+                "private first",
+                "retained error"
+            ],
+            exitCode: 1));
+        var client = CreateClient(
+            factory,
+            new YtDlpClientOptions
+            {
+                YtDlpExecutablePath = "yt-dlp-test",
+                StderrTailLineCount = 1
+            });
+
+        var result = await client.TryGetVideoInfoAsync(VimeoUrl);
+
+        Assert.False(result.Success);
+        Assert.Equal("retained error", result.ErrorOutput);
+        Assert.Null(result.Data);
+    }
+
+    [Fact]
+    public async Task TryDownloadAsync_ReturnsSuccessWithoutThrowing()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess());
+        var client = CreateClient(factory);
+        var outputDirectory = CreateTempDirectory();
+
+        try
+        {
+            var result = await client.TryDownloadAsync(VimeoUrl, outputDirectory);
+
+            Assert.True(result.Success);
+            Assert.Equal(string.Empty, result.ErrorOutput);
+            Assert.Equal(["--paths", $"home:{outputDirectory}", VimeoUrl], factory.SingleStartInfo.Arguments);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task TryDownloadAsync_ReturnsErrorOutputOnProcessFailure()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess(
+            stderrLines: ["download failed"],
+            exitCode: 2));
+        var client = CreateClient(factory);
+        var outputDirectory = CreateTempDirectory();
+
+        try
+        {
+            var result = await client.TryDownloadAsync(VimeoUrl, outputDirectory);
+
+            Assert.False(result.Success);
+            Assert.Equal("download failed", result.ErrorOutput);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ProcessFailure_IncludesCommandExitCodeAndConfiguredStderrTail()
     {
         var factory = new FakeProcessFactory(new FakeYtDlpProcess(

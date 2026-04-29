@@ -155,6 +155,20 @@ public sealed class YtDlpClient : IYtDlpClient
     }
 
     /// <inheritdoc />
+    public async Task<RunResult<VideoInfo>> TryGetVideoInfoAsync(string url, CancellationToken ct = default)
+    {
+        try
+        {
+            var info = await GetVideoInfoAsync(url, ct).ConfigureAwait(false);
+            return RunResult<VideoInfo>.Succeeded(info);
+        }
+        catch (YtDlpException ex)
+        {
+            return RunResult<VideoInfo>.Failed(GetErrorOutput(ex));
+        }
+    }
+
+    /// <inheritdoc />
     public async IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(
         string url,
         [EnumeratorCancellation] CancellationToken ct = default)
@@ -194,6 +208,25 @@ public sealed class YtDlpClient : IYtDlpClient
 
         var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions((options ?? new DownloadOptions()).YtDlp), outputDirectory);
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<RunResult> TryDownloadAsync(
+        string url,
+        string outputDirectory,
+        DownloadOptions? options = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            await DownloadAsync(url, outputDirectory, options, progress, ct).ConfigureAwait(false);
+            return RunResult.Succeeded();
+        }
+        catch (YtDlpException ex)
+        {
+            return RunResult.Failed(GetErrorOutput(ex));
+        }
     }
 
     /// <inheritdoc />
@@ -567,6 +600,17 @@ public sealed class YtDlpClient : IYtDlpClient
 
     private static string JoinStderr(RingBuffer<string> buffer) =>
         string.Join('\n', buffer.Snapshot());
+
+    private static string GetErrorOutput(YtDlpException exception)
+    {
+        if (exception is YtDlpProcessException processException
+            && !string.IsNullOrWhiteSpace(processException.LastStderrLines))
+        {
+            return processException.LastStderrLines;
+        }
+
+        return exception.Message;
+    }
 
     private static VideoInfo DeserializeVideoInfo(string json)
     {
