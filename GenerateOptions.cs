@@ -350,6 +350,7 @@ internal static class CSharpEmitter
         var groups = sections.Select((section, index) => GroupModel.FromSection(section, index)).ToArray();
 
         files["YtDlpOptions.Generated.g.cs"] = EmitRoot(groups);
+        files["YtDlpDeprecatedOptions.g.cs"] = EmitDeprecatedGroup();
 
         foreach (var group in groups)
         {
@@ -375,12 +376,12 @@ internal static class CSharpEmitter
             sb.AppendLine($"    [YtDlpOptionGroup({100 + i})]");
             sb.AppendLine($"    public {group.TypeName} {group.PropertyName} {{ get; init; }} = new();");
 
-            if (i + 1 < groups.Count)
-            {
-                sb.AppendLine();
-            }
+            sb.AppendLine();
         }
 
+        sb.AppendLine("    /// <summary>Generated deprecated legacy options for older youtube-dl/yt-dlp config compatibility.</summary>");
+        sb.AppendLine("    [YtDlpOptionGroup(200)]");
+        sb.AppendLine("    public YtDlpDeprecatedOptions Deprecated { get; init; } = new();");
         sb.AppendLine("}");
         return sb.ToString();
     }
@@ -432,6 +433,37 @@ internal static class CSharpEmitter
         return sb.ToString();
     }
 
+    private static string EmitDeprecatedGroup()
+    {
+        var sb = new StringBuilder();
+        sb.Append(Header);
+        sb.AppendLine("namespace YtDlpSharpLib.Options;");
+        sb.AppendLine();
+        sb.AppendLine("/// <summary>");
+        sb.AppendLine("/// Generated compatibility surface for legacy youtube-dl/yt-dlp flags that no longer appear in current help output.");
+        sb.AppendLine("/// Prefer the non-deprecated replacement options for new code.");
+        sb.AppendLine("/// </summary>");
+        sb.AppendLine("public sealed record YtDlpDeprecatedOptions");
+        sb.AppendLine("{");
+
+        for (var i = 0; i < DeprecatedOptions.Count; i++)
+        {
+            var option = DeprecatedOptions[i];
+            sb.AppendLine($"    /// <summary>{EscapeXml(option.Description)}</summary>");
+            sb.AppendLine($"    [Obsolete({ToLiteral(option.ObsoleteMessage)})]");
+            sb.AppendLine($"    [{BuildDeprecatedAttribute(option)}]");
+            sb.AppendLine($"    public {option.PropertyType} {option.PropertyName} {{ get; init; }}");
+
+            if (i + 1 < DeprecatedOptions.Count)
+            {
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
     private static string BuildAttribute(OptionModel option)
     {
         var arguments = new List<string> { ToLiteral(option.Flag) };
@@ -466,6 +498,25 @@ internal static class CSharpEmitter
             arguments.Add($"Description = {ToLiteral(option.Description)}");
         }
 
+        arguments.Add("IsGenerated = true");
+        return $"YtDlpArgument({string.Join(", ", arguments)})";
+    }
+
+    private static string BuildDeprecatedAttribute(DeprecatedOptionModel option)
+    {
+        var arguments = new List<string> { ToLiteral(option.Flag) };
+
+        if (option.IsSwitch)
+        {
+            arguments.Add("ValueStyle = ArgumentValueStyle.Switch");
+        }
+
+        if (option.ValueName.Length > 0)
+        {
+            arguments.Add($"ValueName = {ToLiteral(option.ValueName)}");
+        }
+
+        arguments.Add($"Description = {ToLiteral(option.Description)}");
         arguments.Add("IsGenerated = true");
         return $"YtDlpArgument({string.Join(", ", arguments)})";
     }
@@ -844,6 +895,139 @@ internal static class CSharpEmitter
     private sealed record EnumModel(string TypeName, IReadOnlyList<EnumValueModel> Values);
 
     private sealed record EnumValueModel(string MemberName, string Token);
+
+    private sealed record DeprecatedOptionModel(
+        string Flag,
+        string PropertyName,
+        string PropertyType,
+        bool IsSwitch,
+        string ValueName,
+        string Description,
+        string ObsoleteMessage);
+
+    private static readonly IReadOnlyList<DeprecatedOptionModel> DeprecatedOptions =
+    [
+        new(
+            "--match-title",
+            "MatchTitle",
+            "string?",
+            IsSwitch: false,
+            "REGEX",
+            "Deprecated legacy title include filter.",
+            "Use VideoSelection.MatchFilters instead."),
+        new(
+            "--reject-title",
+            "RejectTitle",
+            "string?",
+            IsSwitch: false,
+            "REGEX",
+            "Deprecated legacy title exclude filter.",
+            "Use VideoSelection.MatchFilters instead."),
+        new(
+            "--metadata-from-title",
+            "MetadataFromTitle",
+            "string?",
+            IsSwitch: false,
+            "FORMAT",
+            "Deprecated legacy metadata parsing shortcut.",
+            "Use PostProcessing.ParseMetadata instead."),
+        new(
+            "--hls-prefer-native",
+            "HlsPreferNative",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy native HLS downloader selector.",
+            "Use Download.Downloader with an m3u8/native selector instead."),
+        new(
+            "--hls-prefer-ffmpeg",
+            "HlsPreferFfmpeg",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy FFmpeg HLS downloader selector.",
+            "Use Download.Downloader with an m3u8/ffmpeg selector instead."),
+        new(
+            "--prefer-avconv",
+            "PreferAvconv",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy avconv preference flag.",
+            "Use PostProcessing.FfmpegLocation or yt-dlp compatibility options instead."),
+        new(
+            "--prefer-ffmpeg",
+            "PreferFfmpeg",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy FFmpeg preference flag.",
+            "Use PostProcessing.FfmpegLocation or yt-dlp compatibility options instead."),
+        new(
+            "--avconv-location",
+            "AvconvLocation",
+            "string?",
+            IsSwitch: false,
+            "PATH",
+            "Deprecated legacy avconv binary path.",
+            "Use PostProcessing.FfmpegLocation instead."),
+        new(
+            "--cn-verification-proxy",
+            "CnVerificationProxy",
+            "string?",
+            IsSwitch: false,
+            "URL",
+            "Deprecated legacy China verification proxy option.",
+            "Use GeoRestriction.GeoVerificationProxy instead."),
+        new(
+            "--youtube-skip-dash-manifest",
+            "YoutubeSkipDashManifest",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy YouTube DASH manifest skip flag.",
+            "Use Extractor.ExtractorArgs for YouTube extractor-specific behavior instead."),
+        new(
+            "--write-annotations",
+            "WriteAnnotations",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy YouTube annotations sidecar flag.",
+            "YouTube annotations are no longer available."),
+        new(
+            "--load-pages",
+            "LoadPages",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy intermediate page dump flag.",
+            "Use VerbositySimulation.DumpPages or VerbositySimulation.WritePages instead."),
+        new(
+            "--no-call-home",
+            "NoCallHome",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy youtube-dl telemetry opt-out flag.",
+            "yt-dlp does not use the legacy call-home behavior."),
+        new(
+            "--include-ads",
+            "IncludeAds",
+            "bool",
+            IsSwitch: true,
+            string.Empty,
+            "Deprecated legacy ad download flag.",
+            "This legacy youtube-dl option has no supported yt-dlp replacement."),
+        new(
+            "--autonumber-size",
+            "AutonumberSize",
+            "int?",
+            IsSwitch: false,
+            "NUMBER",
+            "Deprecated legacy autonumber width option.",
+            "Use numeric formatting in Filesystem.Output instead.")
+    ];
 }
 
 internal static class OutputWriter

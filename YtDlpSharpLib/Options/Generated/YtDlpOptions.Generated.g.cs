@@ -68,4 +68,8 @@ public sealed partial record YtDlpOptions
     /// <summary>Generated options from yt-dlp's Extractor Options section.</summary>
     [YtDlpOptionGroup(115)]
     public YtDlpExtractorOptions Extractor { get; init; } = new();
+
+    /// <summary>Generated deprecated legacy options for older youtube-dl/yt-dlp config compatibility.</summary>
+    [YtDlpOptionGroup(200)]
+    public YtDlpDeprecatedOptions Deprecated { get; init; } = new();
 }

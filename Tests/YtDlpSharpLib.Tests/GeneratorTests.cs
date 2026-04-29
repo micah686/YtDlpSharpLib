@@ -35,7 +35,13 @@ public sealed class GeneratorTests
 
             var root = await File.ReadAllTextAsync(Path.Combine(outputDir, "YtDlpOptions.Generated.g.cs"));
             Assert.Contains("public YtDlpSponsorBlockOptions SponsorBlock", root);
+            Assert.Contains("public YtDlpDeprecatedOptions Deprecated", root);
             Assert.True(File.Exists(Path.Combine(outputDir, "YtDlpSponsorBlockOptions.g.cs")));
+
+            var deprecated = await File.ReadAllTextAsync(Path.Combine(outputDir, "YtDlpDeprecatedOptions.g.cs"));
+            Assert.Contains("public string? MatchTitle", deprecated);
+            Assert.Contains("[Obsolete(\"Use VideoSelection.MatchFilters instead.\")]", deprecated);
+            Assert.Contains("[YtDlpArgument(\"--autonumber-size\"", deprecated);
 
             var check = await RunGeneratorAsync(repoRoot, "--help-file", fixture, "--output-dir", outputDir, "--check");
             AssertProcessSucceeded(check);
