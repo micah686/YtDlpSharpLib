@@ -302,6 +302,10 @@ public sealed class YtDlpClient : IYtDlpClient
         return stdout.ToString().Trim();
     }
 
+    /// <inheritdoc />
+    public Task RunUpdateAsync(CancellationToken ct = default) =>
+        RunInternalAsync(BuildBareStartInfo(["--update"]), handleStdoutLine: null, ct);
+
     private Task RunDownloadAsync(
         string url,
         string outputDirectory,

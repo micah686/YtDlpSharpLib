@@ -70,4 +70,7 @@ public interface IYtDlpClient
 
     /// <summary>Returns the yt-dlp version string.</summary>
     Task<string> GetVersionAsync(CancellationToken ct = default);
+
+    /// <summary>Runs yt-dlp's self-update passthrough (maps to <c>--update</c>).</summary>
+    Task RunUpdateAsync(CancellationToken ct = default);
 }

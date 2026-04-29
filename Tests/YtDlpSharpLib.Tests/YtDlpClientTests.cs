@@ -207,6 +207,17 @@ public sealed class YtDlpClientTests
         Assert.Equal("second retained\nthird retained", ex.LastStderrLines);
     }
 
+    [Fact]
+    public async Task RunUpdateAsync_InvokesYtDlpUpdatePassthrough()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess());
+        var client = CreateClient(factory);
+
+        await client.RunUpdateAsync();
+
+        Assert.Equal(["--update"], factory.SingleStartInfo.Arguments);
+    }
+
     private static YtDlpClient CreateClient(FakeProcessFactory factory, YtDlpClientOptions? options = null) =>
         new(
             options ?? new YtDlpClientOptions { YtDlpExecutablePath = "yt-dlp-test" },
