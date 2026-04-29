@@ -96,6 +96,146 @@ public sealed class YtDlpClientTests
     }
 
     [Fact]
+    public async Task DownloadAsync_AppliesClientOptionConvenienceDefaults()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess());
+        var client = CreateClient(
+            factory,
+            new YtDlpClientOptions
+            {
+                YtDlpExecutablePath = "yt-dlp-test",
+                OutputFolder = "/configured",
+                OutputFileTemplate = "%(title)s.%(ext)s",
+                RestrictFilenames = true,
+                OverwriteFiles = true,
+                IgnoreDownloadErrors = true
+            });
+        var outputDirectory = CreateTempDirectory();
+
+        try
+        {
+            await client.DownloadAsync(VimeoUrl, outputDirectory);
+
+            Assert.Equal(
+                [
+                    "--ignore-errors",
+                    "--paths",
+                    "home:/configured",
+                    "--output",
+                    "%(title)s.%(ext)s",
+                    "--restrict-filenames",
+                    "--force-overwrites",
+                    VimeoUrl
+                ],
+                factory.SingleStartInfo.Arguments);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAsync_ClientConveniencePropertiesCanBeMutatedAtRuntime()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess());
+        var client = CreateClient(factory);
+        var outputDirectory = CreateTempDirectory();
+
+        client.OutputFolder = "/runtime";
+        client.OutputFileTemplate = "%(id)s.%(ext)s";
+        client.RestrictFilenames = true;
+        client.OverwriteFiles = true;
+        client.IgnoreDownloadErrors = true;
+
+        try
+        {
+            await client.DownloadAsync(VimeoUrl, outputDirectory);
+
+            Assert.Equal("/runtime", client.OutputFolder);
+            Assert.Equal("%(id)s.%(ext)s", client.OutputFileTemplate);
+            Assert.True(client.RestrictFilenames);
+            Assert.True(client.OverwriteFiles);
+            Assert.True(client.IgnoreDownloadErrors);
+            Assert.Equal(
+                [
+                    "--ignore-errors",
+                    "--paths",
+                    "home:/runtime",
+                    "--output",
+                    "%(id)s.%(ext)s",
+                    "--restrict-filenames",
+                    "--force-overwrites",
+                    VimeoUrl
+                ],
+                factory.SingleStartInfo.Arguments);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAsync_PerCallOptionsOverrideClientConvenienceDefaults()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess());
+        var client = CreateClient(
+            factory,
+            new YtDlpClientOptions
+            {
+                YtDlpExecutablePath = "yt-dlp-test",
+                OutputFolder = "/configured",
+                OutputFileTemplate = "%(title)s.%(ext)s",
+                RestrictFilenames = true,
+                OverwriteFiles = true,
+                IgnoreDownloadErrors = true
+            });
+        var outputDirectory = CreateTempDirectory();
+
+        try
+        {
+            await client.DownloadAsync(
+                VimeoUrl,
+                outputDirectory,
+                new DownloadOptions
+                {
+                    YtDlp = new YtDlpOptions
+                    {
+                        General = new YtDlpGeneralOptions
+                        {
+                            AbortOnError = true
+                        },
+                        Filesystem = new YtDlpFilesystemOptions
+                        {
+                            Paths = "home:/per-call",
+                            Output = "%(id)s.%(ext)s",
+                            NoRestrictFilenames = true,
+                            NoOverwrites = true
+                        }
+                    }
+                });
+
+            Assert.Equal(
+                [
+                    "--abort-on-error",
+                    "--paths",
+                    "home:/per-call",
+                    "--output",
+                    "%(id)s.%(ext)s",
+                    "--no-restrict-filenames",
+                    "--no-overwrites",
+                    VimeoUrl
+                ],
+                factory.SingleStartInfo.Arguments);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DownloadMetadataAsync_CombinesMetadataFlagsWithoutOverwritingExplicitPath()
     {
         var factory = new FakeProcessFactory(new FakeYtDlpProcess());

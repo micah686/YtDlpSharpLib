@@ -11,6 +11,31 @@ public sealed record YtDlpClientOptions
     /// <summary>Path to the ffmpeg executable used by yt-dlp for merging or conversion.</summary>
     public string FfmpegExecutablePath { get; init; } = "ffmpeg";
 
+    /// <summary>
+    /// Default output folder for downloads. Per-call <see cref="Options.YtDlpFilesystemOptions.Paths"/> wins when set.
+    /// </summary>
+    public string? OutputFolder { get; init; }
+
+    /// <summary>
+    /// Default output filename template. Per-call <see cref="Options.YtDlpFilesystemOptions.Output"/> wins when set.
+    /// </summary>
+    public string? OutputFileTemplate { get; init; }
+
+    /// <summary>
+    /// Whether downloads should use restricted filenames by default. Per-call filename flags win when set.
+    /// </summary>
+    public bool RestrictFilenames { get; init; }
+
+    /// <summary>
+    /// Whether downloads should overwrite existing files by default. Per-call overwrite flags win when set.
+    /// </summary>
+    public bool OverwriteFiles { get; init; }
+
+    /// <summary>
+    /// Whether download errors should be ignored by default. Per-call error-handling flags win when set.
+    /// </summary>
+    public bool IgnoreDownloadErrors { get; init; }
+
     /// <summary>Default maximum number of concurrent downloads for the execution scheduler.</summary>
     public int DownloadConcurrency { get; init; } = 2;
 

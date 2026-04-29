@@ -28,6 +28,7 @@ public sealed class YtDlpClient : IYtDlpClient
     private readonly IYtDlpProcessFactory _factory;
     private readonly IYtDlpArgumentRenderer _renderer;
     private readonly TimeProvider _timeProvider;
+    private YtDlpOptions _defaultYtDlpOptions;
 
     /// <summary>Creates a client from typed options. Suitable for direct (non-DI) usage.</summary>
     public YtDlpClient(
@@ -45,6 +46,7 @@ public sealed class YtDlpClient : IYtDlpClient
         _factory = processFactory;
         _renderer = argumentRenderer;
         _timeProvider = timeProvider;
+        _defaultYtDlpOptions = BuildDefaultYtDlpOptions(options);
     }
 
     /// <summary>Creates a client from <see cref="IOptions{TOptions}"/>. Used by the DI container.</summary>
@@ -59,6 +61,71 @@ public sealed class YtDlpClient : IYtDlpClient
             argumentRenderer,
             timeProvider)
     {
+    }
+
+    /// <inheritdoc />
+    public string? OutputFolder
+    {
+        get => FromHomePath(_defaultYtDlpOptions.Filesystem.Paths);
+        set => _defaultYtDlpOptions = _defaultYtDlpOptions with
+        {
+            Filesystem = _defaultYtDlpOptions.Filesystem with
+            {
+                Paths = ToHomePath(value)
+            }
+        };
+    }
+
+    /// <inheritdoc />
+    public string? OutputFileTemplate
+    {
+        get => _defaultYtDlpOptions.Filesystem.Output;
+        set => _defaultYtDlpOptions = _defaultYtDlpOptions with
+        {
+            Filesystem = _defaultYtDlpOptions.Filesystem with
+            {
+                Output = string.IsNullOrWhiteSpace(value) ? null : value
+            }
+        };
+    }
+
+    /// <inheritdoc />
+    public bool RestrictFilenames
+    {
+        get => _defaultYtDlpOptions.Filesystem.RestrictFilenames;
+        set => _defaultYtDlpOptions = _defaultYtDlpOptions with
+        {
+            Filesystem = _defaultYtDlpOptions.Filesystem with
+            {
+                RestrictFilenames = value
+            }
+        };
+    }
+
+    /// <inheritdoc />
+    public bool OverwriteFiles
+    {
+        get => _defaultYtDlpOptions.Filesystem.ForceOverwrites;
+        set => _defaultYtDlpOptions = _defaultYtDlpOptions with
+        {
+            Filesystem = _defaultYtDlpOptions.Filesystem with
+            {
+                ForceOverwrites = value
+            }
+        };
+    }
+
+    /// <inheritdoc />
+    public bool IgnoreDownloadErrors
+    {
+        get => _defaultYtDlpOptions.General.IgnoreErrors;
+        set => _defaultYtDlpOptions = _defaultYtDlpOptions with
+        {
+            General = _defaultYtDlpOptions.General with
+            {
+                IgnoreErrors = value
+            }
+        };
     }
 
     /// <inheritdoc />
@@ -125,7 +192,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
-        var ytDlp = ApplyDownloadDefaults((options ?? new DownloadOptions()).YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions((options ?? new DownloadOptions()).YtDlp), outputDirectory);
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
     }
 
@@ -139,7 +206,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
-        var ytDlp = ApplyDownloadDefaults((options ?? new DownloadOptions()).YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions((options ?? new DownloadOptions()).YtDlp), outputDirectory);
         return StreamProgressAsync(url, outputDirectory, ytDlp, ct);
     }
 
@@ -155,7 +222,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new AudioDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
         ytDlp = ytDlp with
         {
             PostProcessing = ytDlp.PostProcessing with
@@ -179,7 +246,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new PlaylistDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
         ytDlp = ytDlp with
         {
             VideoSelection = ytDlp.VideoSelection with
@@ -203,7 +270,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new AudioPlaylistDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
         ytDlp = ytDlp with
         {
             PostProcessing = ytDlp.PostProcessing with
@@ -231,7 +298,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new MetadataDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
         ytDlp = ytDlp with
         {
             Filesystem = ytDlp.Filesystem with
@@ -267,7 +334,7 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new LiveChatDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(resolved.YtDlp, outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
         ytDlp = ytDlp with
         {
             Subtitle = ytDlp.Subtitle with
@@ -519,6 +586,52 @@ public sealed class YtDlpClient : IYtDlpClient
         }
     }
 
+    private YtDlpOptions ComposeDefaultOptions(YtDlpOptions options)
+    {
+        var defaults = _defaultYtDlpOptions;
+
+        return options with
+        {
+            General = options.General with
+            {
+                IgnoreErrors = options.General.IgnoreErrors
+                               || (defaults.General.IgnoreErrors && !options.General.AbortOnError)
+            },
+            Filesystem = options.Filesystem with
+            {
+                Paths = string.IsNullOrWhiteSpace(options.Filesystem.Paths)
+                    ? defaults.Filesystem.Paths
+                    : options.Filesystem.Paths,
+                Output = options.Filesystem.Output ?? defaults.Filesystem.Output,
+                RestrictFilenames = options.Filesystem.RestrictFilenames
+                                    || (defaults.Filesystem.RestrictFilenames
+                                        && !options.Filesystem.NoRestrictFilenames),
+                ForceOverwrites = options.Filesystem.ForceOverwrites
+                                  || (defaults.Filesystem.ForceOverwrites
+                                      && !options.Filesystem.NoOverwrites
+                                      && !options.Filesystem.NoForceOverwrites)
+            }
+        };
+    }
+
+    private static YtDlpOptions BuildDefaultYtDlpOptions(YtDlpClientOptions options) =>
+        new()
+        {
+            General = new YtDlpGeneralOptions
+            {
+                IgnoreErrors = options.IgnoreDownloadErrors
+            },
+            Filesystem = new YtDlpFilesystemOptions
+            {
+                Paths = ToHomePath(options.OutputFolder),
+                Output = string.IsNullOrWhiteSpace(options.OutputFileTemplate)
+                    ? null
+                    : options.OutputFileTemplate,
+                RestrictFilenames = options.RestrictFilenames,
+                ForceOverwrites = options.OverwriteFiles
+            }
+        };
+
     private static YtDlpOptions ApplyDownloadDefaults(YtDlpOptions options, string outputDirectory)
     {
         if (!string.IsNullOrWhiteSpace(options.Filesystem.Paths))
@@ -530,6 +643,23 @@ public sealed class YtDlpClient : IYtDlpClient
         {
             Filesystem = options.Filesystem with { Paths = $"home:{outputDirectory}" }
         };
+    }
+
+    private static string? ToHomePath(string? outputFolder) =>
+        string.IsNullOrWhiteSpace(outputFolder) ? null : $"home:{outputFolder}";
+
+    private static string? FromHomePath(string? paths)
+    {
+        const string HomePrefix = "home:";
+
+        if (string.IsNullOrWhiteSpace(paths))
+        {
+            return null;
+        }
+
+        return paths.StartsWith(HomePrefix, StringComparison.Ordinal)
+            ? paths[HomePrefix.Length..]
+            : paths;
     }
 
     private static AudioConversionFormat ToAudioConversionFormat(AudioConversionFormat audioFormat) =>

@@ -9,6 +9,31 @@ namespace YtDlpSharpLib;
 /// </summary>
 public interface IYtDlpClient
 {
+    /// <summary>
+    /// Default output folder for downloads. Per-call <see cref="Options.YtDlpFilesystemOptions.Paths"/> wins when set.
+    /// </summary>
+    string? OutputFolder { get; set; }
+
+    /// <summary>
+    /// Default output filename template. Per-call <see cref="Options.YtDlpFilesystemOptions.Output"/> wins when set.
+    /// </summary>
+    string? OutputFileTemplate { get; set; }
+
+    /// <summary>
+    /// Whether downloads should use restricted filenames by default. Per-call filename flags win when set.
+    /// </summary>
+    bool RestrictFilenames { get; set; }
+
+    /// <summary>
+    /// Whether downloads should overwrite existing files by default. Per-call overwrite flags win when set.
+    /// </summary>
+    bool OverwriteFiles { get; set; }
+
+    /// <summary>
+    /// Whether download errors should be ignored by default. Per-call error-handling flags win when set.
+    /// </summary>
+    bool IgnoreDownloadErrors { get; set; }
+
     /// <summary>Retrieves structured video information without downloading any media.</summary>
     Task<VideoInfo> GetVideoInfoAsync(string url, CancellationToken ct = default);
 
