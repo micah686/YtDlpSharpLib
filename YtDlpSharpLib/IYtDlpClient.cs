@@ -1,5 +1,7 @@
 using YtDlpSharpLib.Downloads;
 using YtDlpSharpLib.Models;
+using YtDlpSharpLib.Options;
+using YtDlpSharpLib.Process;
 using YtDlpSharpLib.Progress;
 
 namespace YtDlpSharpLib;
@@ -34,11 +36,59 @@ public interface IYtDlpClient
     /// </summary>
     bool IgnoreDownloadErrors { get; set; }
 
+    /// <summary>Runs yt-dlp directly with the supplied <see cref="YtDlpOptions"/> and a single URL.</summary>
+    Task<RunResult<YtDlpProcessResult>> RunWithOptionsAsync(
+        string url,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>Runs yt-dlp directly with the supplied <see cref="YtDlpOptions"/> and a batch of URLs.</summary>
+    Task<RunResult<YtDlpProcessResult>> RunWithOptionsAsync(
+        IEnumerable<string> urls,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>Synchronously-named alias for <see cref="RunWithOptionsAsync(string, YtDlpOptions, string?, IProgress{YtDlpProgress}?, CancellationToken)"/>.</summary>
+    Task<RunResult<YtDlpProcessResult>> RunWithOptions(
+        string url,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>Synchronously-named alias for <see cref="RunWithOptionsAsync(IEnumerable{string}, YtDlpOptions, string?, IProgress{YtDlpProgress}?, CancellationToken)"/>.</summary>
+    Task<RunResult<YtDlpProcessResult>> RunWithOptions(
+        IEnumerable<string> urls,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default);
+
     /// <summary>Retrieves structured video information without downloading any media.</summary>
-    Task<VideoInfo> GetVideoInfoAsync(string url, CancellationToken ct = default);
+    /// <param name="url">The video URL.</param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <param name="flat">When <see langword="true"/>, request <c>--flat-playlist</c> so playlist URLs return shallow entries.</param>
+    /// <param name="fetchComments">When <see langword="true"/>, instruct yt-dlp to populate the <c>comments</c> array.</param>
+    /// <param name="overrideOptions">Additional <see cref="YtDlpOptions"/> merged on top of the metadata defaults.</param>
+    Task<VideoInfo> GetVideoInfoAsync(
+        string url,
+        CancellationToken ct = default,
+        bool flat = false,
+        bool fetchComments = false,
+        YtDlpOptions? overrideOptions = null);
 
     /// <summary>Retrieves structured video information without throwing for yt-dlp process failures.</summary>
-    Task<RunResult<VideoInfo>> TryGetVideoInfoAsync(string url, CancellationToken ct = default);
+    /// <inheritdoc cref="GetVideoInfoAsync(string, CancellationToken, bool, bool, YtDlpOptions?)"/>
+    Task<RunResult<VideoInfo>> TryGetVideoInfoAsync(
+        string url,
+        CancellationToken ct = default,
+        bool flat = false,
+        bool fetchComments = false,
+        YtDlpOptions? overrideOptions = null);
 
     /// <summary>Streams video metadata for each entry of a playlist.</summary>
     IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(string url, CancellationToken ct = default);

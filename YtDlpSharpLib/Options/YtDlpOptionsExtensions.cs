@@ -49,6 +49,45 @@ public static class YtDlpOptionsExtensions
         return result;
     }
 
+    /// <summary>
+    /// Composes <paramref name="defaults"/> with <paramref name="overrides"/>, copying explicitly
+    /// set override values on top of the defaults and clearing any opposite boolean switches the
+    /// caller introduced (e.g., <c>--no-foo</c> wipes a default <c>--foo</c>).
+    /// </summary>
+    /// <remarks>
+    /// Returns <paramref name="defaults"/> unchanged when <paramref name="overrides"/> is
+    /// <see langword="null"/>. Conflict resolution scans every boolean property the override
+    /// explicitly turned on and zeroes out any sibling boolean whose
+    /// <see cref="YtDlpArgumentAttribute.Name"/> / aliases name the inverse switch.
+    /// </remarks>
+    public static YtDlpOptions WithOverrides(this YtDlpOptions defaults, YtDlpOptions? overrides)
+    {
+        ArgumentNullException.ThrowIfNull(defaults);
+        if (overrides is null)
+        {
+            return defaults;
+        }
+
+        var result = new YtDlpOptions();
+        foreach (var groupProperty in GroupProperties)
+        {
+            var defaultGroup = groupProperty.GetValue(defaults);
+            var overrideGroup = groupProperty.GetValue(overrides);
+            var mergedGroup = MergeGroupWithConflictCleanup(
+                groupProperty.PropertyType,
+                defaultGroup,
+                overrideGroup);
+            groupProperty.SetValue(result, mergedGroup);
+        }
+
+        return result with
+        {
+            AdvancedArguments = defaults.AdvancedArguments
+                .Concat(overrides.AdvancedArguments)
+                .ToArray()
+        };
+    }
+
     /// <summary>Adds a typed custom argument to <see cref="YtDlpOptions.AdvancedArguments"/>.</summary>
     public static YtDlpOptions AddCustomOption<T>(
         this YtDlpOptions options,
@@ -134,6 +173,149 @@ public static class YtDlpOptionsExtensions
 
         AddValueHashCode(ref hash, options.AdvancedArguments);
         return hash.ToHashCode();
+    }
+
+    private static object MergeGroupWithConflictCleanup(
+        Type groupType,
+        object? defaultGroup,
+        object? overrideGroup)
+    {
+        var result = Activator.CreateInstance(groupType)
+            ?? throw new InvalidOperationException($"Could not create option group '{groupType.Name}'.");
+
+        var properties = GetProperties(groupType);
+        foreach (var property in properties)
+        {
+            var overrideValue = overrideGroup is null ? null : property.GetValue(overrideGroup);
+            var defaultValue = defaultGroup is null ? null : property.GetValue(defaultGroup);
+            var value = HasExplicitValue(overrideValue, property.PropertyType) ? overrideValue : defaultValue;
+            property.SetValue(result, value);
+        }
+
+        if (overrideGroup is not null)
+        {
+            foreach (var property in properties)
+            {
+                if (property.PropertyType != typeof(bool))
+                {
+                    continue;
+                }
+
+                if (property.GetValue(overrideGroup) is true)
+                {
+                    ClearConflictingSwitches(properties, result, property);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static void ClearConflictingSwitches(
+        IReadOnlyList<PropertyInfo> properties,
+        object group,
+        PropertyInfo selectedProperty)
+    {
+        var selectedNames = GetOptionNames(selectedProperty).ToArray();
+        if (selectedNames.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var candidate in properties)
+        {
+            if (candidate == selectedProperty || candidate.PropertyType != typeof(bool))
+            {
+                continue;
+            }
+
+            if (GetOptionNames(candidate).Any(candidateName =>
+                    selectedNames.Any(selectedName => AreOppositeSwitches(selectedName, candidateName))))
+            {
+                candidate.SetValue(group, false);
+            }
+        }
+    }
+
+    private static IEnumerable<string> GetOptionNames(PropertyInfo property)
+    {
+        var attribute = property.GetCustomAttribute<YtDlpArgumentAttribute>();
+        if (attribute is null)
+        {
+            yield break;
+        }
+
+        yield return attribute.Name;
+        if (attribute.Aliases is { } aliases)
+        {
+            foreach (var alias in aliases)
+            {
+                yield return alias;
+            }
+        }
+    }
+
+    private static bool AreOppositeSwitches(string left, string right) =>
+        IsOpposite(left, right) || IsOpposite(right, left);
+
+    private static bool IsOpposite(string selected, string candidate)
+    {
+        if (!selected.StartsWith("--", StringComparison.Ordinal) ||
+            !candidate.StartsWith("--", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (selected.StartsWith("--no-", StringComparison.Ordinal))
+        {
+            var stem = selected["--no-".Length..];
+            return string.Equals(candidate, "--" + stem, StringComparison.Ordinal) ||
+                   string.Equals(candidate, "--yes-" + stem, StringComparison.Ordinal);
+        }
+
+        if (selected.StartsWith("--yes-", StringComparison.Ordinal))
+        {
+            var stem = selected["--yes-".Length..];
+            return string.Equals(candidate, "--no-" + stem, StringComparison.Ordinal);
+        }
+
+        return string.Equals(candidate, "--no-" + selected["--".Length..], StringComparison.Ordinal);
+    }
+
+    private static bool HasExplicitValue(object? value, Type type)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+
+        var nullable = Nullable.GetUnderlyingType(type);
+        if (nullable is not null)
+        {
+            return true;
+        }
+
+        if (type == typeof(bool))
+        {
+            return value is true;
+        }
+
+        if (type.IsValueType)
+        {
+            return !value.Equals(Activator.CreateInstance(type));
+        }
+
+        if (value is string text)
+        {
+            return text.Length > 0;
+        }
+
+        if (value is IEnumerable enumerable)
+        {
+            return enumerable.Cast<object?>().Any();
+        }
+
+        return true;
     }
 
     private static object MergeGroup(

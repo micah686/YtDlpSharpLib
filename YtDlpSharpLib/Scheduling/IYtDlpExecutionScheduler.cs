@@ -22,6 +22,20 @@ public interface IYtDlpExecutionScheduler
     /// Submits a batch of downloads, yielding each <see cref="DownloadResult"/> as it completes.
     /// Failures are reported via <see cref="DownloadResult.Error"/> and do not stop other jobs.
     /// </summary>
+    /// <param name="requests">The batch of jobs to execute.</param>
+    /// <param name="maxConcurrency">
+    /// Optional per-call concurrency override. When <see langword="null"/>, the scheduler's
+    /// configured concurrency is used.
+    /// </param>
+    /// <param name="ct">A cancellation token.</param>
+    IAsyncEnumerable<DownloadResult> ExecuteAsync(
+        IEnumerable<DownloadRequest> requests,
+        int? maxConcurrency = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Backwards-compatible alias for <see cref="ExecuteAsync(IEnumerable{DownloadRequest}, int?, CancellationToken)"/>.
+    /// </summary>
     IAsyncEnumerable<DownloadResult> ExecuteBulkAsync(
         IEnumerable<DownloadRequest> requests,
         CancellationToken ct = default);

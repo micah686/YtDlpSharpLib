@@ -5,6 +5,9 @@ namespace YtDlpSharpLib.Progress;
 /// </summary>
 public enum ProgressPhase
 {
+    /// <summary>The line could not be classified to a more specific phase.</summary>
+    Unknown,
+
     /// <summary>The video stream is being downloaded.</summary>
     Downloading,
 
@@ -22,6 +25,9 @@ public enum ProgressPhase
 
     /// <summary>A general yt-dlp post-processing step.</summary>
     PostProcessing,
+
+    /// <summary>The current item has finished downloading (100% or already-on-disk).</summary>
+    Finished,
 
     /// <summary>The download completed successfully.</summary>
     Completed

@@ -1,19 +1,17 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using YtDlpSharpLib.Downloads;
 using YtDlpSharpLib.Exceptions;
+using YtDlpSharpLib.Internal;
 using YtDlpSharpLib.Models;
 using YtDlpSharpLib.Options;
 using YtDlpSharpLib.Process;
 using YtDlpSharpLib.Progress;
 using YtDlpSharpLib.Rendering;
-using YtDlpSharpLib.Internal;
 
 namespace YtDlpSharpLib;
 
@@ -29,6 +27,19 @@ public sealed class YtDlpClient : IYtDlpClient
     private readonly IYtDlpArgumentRenderer _renderer;
     private readonly TimeProvider _timeProvider;
     private YtDlpOptions _defaultYtDlpOptions;
+
+    /// <summary>
+    /// Creates a client with default services wired up. Suitable for simple console / direct
+    /// usage without dependency injection.
+    /// </summary>
+    public YtDlpClient(YtDlpClientOptions? options = null)
+        : this(
+            options ?? new YtDlpClientOptions(),
+            new YtDlpProcessFactory(),
+            new YtDlpArgumentRenderer(),
+            TimeProvider.System)
+    {
+    }
 
     /// <summary>Creates a client from typed options. Suitable for direct (non-DI) usage.</summary>
     public YtDlpClient(
@@ -129,18 +140,112 @@ public sealed class YtDlpClient : IYtDlpClient
     }
 
     /// <inheritdoc />
-    public async Task<VideoInfo> GetVideoInfoAsync(string url, CancellationToken ct = default)
+    public Task<RunResult<YtDlpProcessResult>> RunWithOptions(
+        string url,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default) =>
+        RunWithOptionsAsync(url, options, workingDirectory, progress, ct);
+
+    /// <inheritdoc />
+    public Task<RunResult<YtDlpProcessResult>> RunWithOptions(
+        IEnumerable<string> urls,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default) =>
+        RunWithOptionsAsync(urls, options, workingDirectory, progress, ct);
+
+    /// <inheritdoc />
+    public Task<RunResult<YtDlpProcessResult>> RunWithOptionsAsync(
+        string url,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return RunWithOptionsAsync([url], options, workingDirectory, progress, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<RunResult<YtDlpProcessResult>> RunWithOptionsAsync(
+        IEnumerable<string> urls,
+        YtDlpOptions options,
+        string? workingDirectory = null,
+        IProgress<YtDlpProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(urls);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var urlList = urls as IReadOnlyList<string> ?? urls.ToArray();
+        foreach (var url in urlList)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        }
+
+        var rendered = _renderer.Render(options);
+        var arguments = new List<string>(rendered.Count + urlList.Count);
+        arguments.AddRange(rendered);
+        arguments.AddRange(urlList);
+
+        var startInfo = new YtDlpProcessStartInfo
+        {
+            ExecutablePath = _options.YtDlpExecutablePath,
+            Arguments = arguments,
+            WorkingDirectory = workingDirectory,
+            EnvironmentVariables = _options.EnvironmentVariables,
+            RawStdoutWriter = _options.StdoutForwardingWriter,
+            RawStderrWriter = _options.StderrForwardingWriter
+        };
+
+        try
+        {
+            var result = await RunCapturingAsync(startInfo, progress, ct).ConfigureAwait(false);
+            return RunResult<YtDlpProcessResult>.Succeeded(result);
+        }
+        catch (YtDlpException ex)
+        {
+            return RunResult<YtDlpProcessResult>.Failed(GetErrorOutput(ex));
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<VideoInfo> GetVideoInfoAsync(
+        string url,
+        CancellationToken ct = default,
+        bool flat = false,
+        bool fetchComments = false,
+        YtDlpOptions? overrideOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
 
         var args = new List<string>
         {
             "--dump-single-json",
-            "--no-playlist",
-            url
+            "--no-playlist"
         };
-        var startInfo = BuildBareStartInfo(args);
 
+        if (flat)
+        {
+            args.Add("--flat-playlist");
+        }
+
+        if (fetchComments)
+        {
+            args.Add("--write-comments");
+        }
+
+        if (overrideOptions is not null)
+        {
+            args.AddRange(_renderer.Render(overrideOptions));
+        }
+
+        args.Add(url);
+
+        var startInfo = BuildBareStartInfo(args);
         var stdout = new StringBuilder();
         await RunInternalAsync(
             startInfo,
@@ -155,11 +260,16 @@ public sealed class YtDlpClient : IYtDlpClient
     }
 
     /// <inheritdoc />
-    public async Task<RunResult<VideoInfo>> TryGetVideoInfoAsync(string url, CancellationToken ct = default)
+    public async Task<RunResult<VideoInfo>> TryGetVideoInfoAsync(
+        string url,
+        CancellationToken ct = default,
+        bool flat = false,
+        bool fetchComments = false,
+        YtDlpOptions? overrideOptions = null)
     {
         try
         {
-            var info = await GetVideoInfoAsync(url, ct).ConfigureAwait(false);
+            var info = await GetVideoInfoAsync(url, ct, flat, fetchComments, overrideOptions).ConfigureAwait(false);
             return RunResult<VideoInfo>.Succeeded(info);
         }
         catch (YtDlpException ex)
@@ -206,7 +316,9 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions((options ?? new DownloadOptions()).YtDlp), outputDirectory);
+        var resolved = options ?? new DownloadOptions();
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         return RunDownloadAsync(url, outputDirectory, ytDlp, progress, ct);
     }
 
@@ -239,7 +351,9 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions((options ?? new DownloadOptions()).YtDlp), outputDirectory);
+        var resolved = options ?? new DownloadOptions();
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         return StreamProgressAsync(url, outputDirectory, ytDlp, ct);
     }
 
@@ -255,7 +369,8 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new AudioDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         ytDlp = ytDlp with
         {
             PostProcessing = ytDlp.PostProcessing with
@@ -279,7 +394,8 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new PlaylistDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         ytDlp = ytDlp with
         {
             VideoSelection = ytDlp.VideoSelection with
@@ -303,7 +419,8 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new AudioPlaylistDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         ytDlp = ytDlp with
         {
             PostProcessing = ytDlp.PostProcessing with
@@ -331,7 +448,8 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new MetadataDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         ytDlp = ytDlp with
         {
             Filesystem = ytDlp.Filesystem with
@@ -367,7 +485,8 @@ public sealed class YtDlpClient : IYtDlpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var resolved = options ?? new LiveChatDownloadOptions();
-        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp), outputDirectory);
+        var ytDlp = ApplyDownloadDefaults(ComposeDefaultOptions(resolved.YtDlp, resolved), outputDirectory);
+        ytDlp = ApplyConvenienceFlags(ytDlp, resolved);
         ytDlp = ytDlp with
         {
             Subtitle = ytDlp.Subtitle with
@@ -437,7 +556,6 @@ public sealed class YtDlpClient : IYtDlpClient
         YtDlpOptions ytDlpOptions,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        _ = outputDirectory;
         var startInfo = BuildDownloadStartInfo(ytDlpOptions, outputDirectory, url);
 
         await foreach (var line in StreamStdoutAsync(startInfo, ct).ConfigureAwait(false))
@@ -527,6 +645,79 @@ public sealed class YtDlpClient : IYtDlpClient
                 exitCode: exitCode,
                 lastStderrLines: JoinStderr(stderrBuffer));
         }
+    }
+
+    private async Task<YtDlpProcessResult> RunCapturingAsync(
+        YtDlpProcessStartInfo startInfo,
+        IProgress<YtDlpProgress>? progress,
+        CancellationToken ct)
+    {
+        await using var process = _factory.Create(startInfo);
+        var stdoutLines = new List<string>();
+        var stderrLines = new List<string>();
+        var stderrBuffer = new RingBuffer<string>(_options.StderrTailLineCount);
+
+        var stderrTask = Task.Run(async () =>
+        {
+            await foreach (var line in process.StderrLines.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                lock (stderrLines)
+                {
+                    stderrLines.Add(line);
+                }
+                stderrBuffer.Add(line);
+            }
+        }, CancellationToken.None);
+
+        var stdoutTask = Task.Run(async () =>
+        {
+            await foreach (var line in process.StdoutLines.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                lock (stdoutLines)
+                {
+                    stdoutLines.Add(line);
+                }
+
+                if (progress is not null && ProgressLineParser.TryParse(line, out var parsed))
+                {
+                    progress.Report(parsed);
+                }
+            }
+        }, CancellationToken.None);
+
+        await process.StartAsync(ct).ConfigureAwait(false);
+
+        try
+        {
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await GracefulCancelAsync(process).ConfigureAwait(false);
+            throw;
+        }
+
+        await SafeAwaitAsync(stdoutTask).ConfigureAwait(false);
+        await SafeAwaitAsync(stderrTask).ConfigureAwait(false);
+
+        var exitCode = process.ExitCode ?? -1;
+        if (exitCode != 0)
+        {
+            throw new YtDlpProcessException(
+                $"yt-dlp exited with code {exitCode.ToString(CultureInfo.InvariantCulture)}.",
+                command: BuildCommandSummary(startInfo),
+                exitCode: exitCode,
+                lastStderrLines: JoinStderr(stderrBuffer));
+        }
+
+        return new YtDlpProcessResult
+        {
+            ExitCode = exitCode,
+            StandardOutput = string.Join('\n', stdoutLines),
+            StandardError = string.Join('\n', stderrLines),
+            StandardOutputLines = stdoutLines,
+            StandardErrorLines = stderrLines
+        };
     }
 
     private async Task GracefulCancelAsync(IYtDlpProcess process)
@@ -630,7 +821,7 @@ public sealed class YtDlpClient : IYtDlpClient
         }
     }
 
-    private YtDlpOptions ComposeDefaultOptions(YtDlpOptions options)
+    private YtDlpOptions ComposeDefaultOptions(YtDlpOptions options, DownloadOptions downloadOptions)
     {
         var defaults = _defaultYtDlpOptions;
 
@@ -639,7 +830,9 @@ public sealed class YtDlpClient : IYtDlpClient
             General = options.General with
             {
                 IgnoreErrors = options.General.IgnoreErrors
-                               || (defaults.General.IgnoreErrors && !options.General.AbortOnError)
+                               || (defaults.General.IgnoreErrors
+                                   && !options.General.AbortOnError
+                                   && !downloadOptions.AbortOnError)
             },
             Filesystem = options.Filesystem with
             {
@@ -655,6 +848,56 @@ public sealed class YtDlpClient : IYtDlpClient
                                       && !options.Filesystem.NoOverwrites
                                       && !options.Filesystem.NoForceOverwrites)
             }
+        };
+    }
+
+    private static YtDlpOptions ApplyConvenienceFlags(YtDlpOptions options, DownloadOptions downloadOptions)
+    {
+        var general = options.General;
+        var filesystem = options.Filesystem;
+
+        if (downloadOptions.OutputTemplate is not null)
+        {
+            filesystem = filesystem with { Output = downloadOptions.OutputTemplate };
+        }
+
+        if (downloadOptions.RestrictFilenames is bool restrict)
+        {
+            filesystem = filesystem with
+            {
+                RestrictFilenames = restrict,
+                NoRestrictFilenames = !restrict
+            };
+        }
+
+        if (downloadOptions.OverwriteFiles is bool overwrite)
+        {
+            filesystem = filesystem with
+            {
+                ForceOverwrites = overwrite,
+                NoOverwrites = !overwrite,
+                NoForceOverwrites = !overwrite
+            };
+        }
+
+        if (downloadOptions.IgnoreDownloadErrors is bool ignore)
+        {
+            general = general with
+            {
+                IgnoreErrors = ignore,
+                AbortOnError = !ignore
+            };
+        }
+
+        if (downloadOptions.AbortOnError)
+        {
+            general = general with { IgnoreErrors = false, AbortOnError = true };
+        }
+
+        return options with
+        {
+            General = general,
+            Filesystem = filesystem
         };
     }
 

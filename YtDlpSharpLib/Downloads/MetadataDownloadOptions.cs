@@ -1,11 +1,9 @@
-using YtDlpSharpLib.Options;
-
 namespace YtDlpSharpLib.Downloads;
 
 /// <summary>
 /// Options for retrieving metadata only (maps to <c>--write-info-json --skip-download</c>).
 /// </summary>
-public sealed record MetadataDownloadOptions
+public record MetadataDownloadOptions : DownloadOptions
 {
     /// <summary>Whether to also write the thumbnail next to the info-json.</summary>
     public bool WriteThumbnail { get; init; }
@@ -15,7 +13,4 @@ public sealed record MetadataDownloadOptions
 
     /// <summary>Optional comma-separated subtitle languages (e.g., <c>"en,ja"</c>).</summary>
     public string? SubtitleLanguages { get; init; }
-
-    /// <summary>The underlying yt-dlp options used to build the command line.</summary>
-    public YtDlpOptions YtDlp { get; init; } = new();
 }

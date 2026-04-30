@@ -13,6 +13,8 @@ public static class ProgressLineParser
     private const string AtSentinel = " at ";
     private const string EtaSentinel = " ETA ";
     private const string InSentinel = " in ";
+    private const string DestinationSentinel = "Destination:";
+    private const string AlreadyDownloadedSentinel = "has already been downloaded";
 
     /// <summary>
     /// Attempts to parse a single line of yt-dlp output into a <see cref="YtDlpProgress"/>.
@@ -37,20 +39,54 @@ public static class ProgressLineParser
         var tag = trimmed[1..closeBracket];
         var rest = trimmed[(closeBracket + 1)..].TrimStart();
         var phase = MapPhase(tag);
+        var rawLine = line.ToString();
 
-        if (phase == ProgressPhase.Downloading && TryParseDownload(rest, out var downloadProgress))
+        if (phase == ProgressPhase.Downloading)
         {
-            progress = downloadProgress with { RawLine = line.ToString() };
+            progress = ParseDownload(rest, rawLine);
             return true;
         }
+
+        var restString = rest.IsEmpty ? null : rest.ToString();
 
         progress = new YtDlpProgress
         {
             Phase = phase,
-            AdditionalInfo = rest.IsEmpty ? null : rest.ToString(),
-            RawLine = line.ToString()
+            AdditionalInfo = restString,
+            Message = restString,
+            Destination = ExtractDestination(restString),
+            RawLine = rawLine
         };
         return true;
+    }
+
+    /// <summary>
+    /// Attempts to parse a single line of yt-dlp output into a <see cref="YtDlpProgress"/>.
+    /// </summary>
+    public static bool TryParse(string line, out YtDlpProgress progress)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+        return TryParse(line.AsSpan(), out progress);
+    }
+
+    /// <summary>
+    /// Parses a single line of yt-dlp output, returning a fallback <see cref="ProgressPhase.Unknown"/>
+    /// event for lines that could not be classified.
+    /// </summary>
+    public static YtDlpProgress Parse(string line)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+        if (TryParse(line.AsSpan(), out var progress))
+        {
+            return progress;
+        }
+
+        return new YtDlpProgress
+        {
+            Phase = ProgressPhase.Unknown,
+            Message = line,
+            RawLine = line
+        };
     }
 
     private static ProgressPhase MapPhase(ReadOnlySpan<char> tag) =>
@@ -68,7 +104,53 @@ public static class ProgressLineParser
             _ => ProgressPhase.PostProcessing
         };
 
-    private static bool TryParseDownload(ReadOnlySpan<char> rest, out YtDlpProgress progress)
+    private static YtDlpProgress ParseDownload(ReadOnlySpan<char> rest, string rawLine)
+    {
+        var restString = rest.IsEmpty ? null : rest.ToString();
+
+        if (rest.StartsWith(DestinationSentinel.AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            return new YtDlpProgress
+            {
+                Phase = ProgressPhase.Downloading,
+                Message = restString,
+                Destination = ExtractDestination(restString),
+                AdditionalInfo = restString,
+                RawLine = rawLine
+            };
+        }
+
+        if (rest.IndexOf(AlreadyDownloadedSentinel.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return new YtDlpProgress
+            {
+                Phase = ProgressPhase.Finished,
+                Percent = 100,
+                Message = restString,
+                AdditionalInfo = restString,
+                Destination = ExtractAlreadyDownloadedPath(restString),
+                RawLine = rawLine
+            };
+        }
+
+        if (TryParseDownloadProgress(rest, rawLine, out var parsed))
+        {
+            return parsed;
+        }
+
+        return new YtDlpProgress
+        {
+            Phase = ProgressPhase.Downloading,
+            Message = restString,
+            AdditionalInfo = restString,
+            RawLine = rawLine
+        };
+    }
+
+    private static bool TryParseDownloadProgress(
+        ReadOnlySpan<char> rest,
+        string rawLine,
+        out YtDlpProgress progress)
     {
         progress = null!;
 
@@ -98,7 +180,7 @@ public static class ProgressLineParser
 
         long? totalBytes = null;
         string? speed = null;
-        string? eta = null;
+        TimeSpan? eta = null;
 
         var ofIndex = rest.IndexOf(OfSentinel.AsSpan());
         if (ofIndex >= 0)
@@ -129,7 +211,7 @@ public static class ProgressLineParser
             var etaSpan = ExtractToken(rest, etaIndex + EtaSentinel.Length);
             if (!etaSpan.IsEmpty && !etaSpan.SequenceEqual("Unknown".AsSpan()))
             {
-                eta = etaSpan.ToString();
+                eta = ParseEta(etaSpan);
             }
         }
         else
@@ -140,7 +222,7 @@ public static class ProgressLineParser
                 var elapsedSpan = ExtractToken(rest, inIndex + InSentinel.Length);
                 if (!elapsedSpan.IsEmpty)
                 {
-                    eta = elapsedSpan.ToString();
+                    eta = ParseEta(elapsedSpan);
                 }
             }
         }
@@ -151,14 +233,19 @@ public static class ProgressLineParser
             downloadedBytes = (long)(total * (percent / 100.0));
         }
 
+        var phase = percent >= 100 ? ProgressPhase.Finished : ProgressPhase.Downloading;
+        var message = rest.IsEmpty ? null : rest.ToString();
+
         progress = new YtDlpProgress
         {
-            Phase = ProgressPhase.Downloading,
+            Phase = phase,
             Percent = percent,
             TotalBytes = totalBytes,
             DownloadedBytes = downloadedBytes,
             Speed = speed,
-            Eta = eta
+            Eta = eta,
+            Message = message,
+            RawLine = rawLine
         };
         return true;
     }
@@ -216,5 +303,61 @@ public static class ProgressLineParser
         };
 
         return multiplier == 0 ? null : (long)(num * multiplier);
+    }
+
+    private static TimeSpan? ParseEta(ReadOnlySpan<char> eta)
+    {
+        Span<Range> ranges = stackalloc Range[3];
+        var count = eta.Split(ranges, ':');
+
+        if (count == 2
+            && int.TryParse(eta[ranges[0]], NumberStyles.None, CultureInfo.InvariantCulture, out var minutes)
+            && int.TryParse(eta[ranges[1]], NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
+        {
+            return new TimeSpan(0, minutes, seconds);
+        }
+
+        if (count == 3
+            && int.TryParse(eta[ranges[0]], NumberStyles.None, CultureInfo.InvariantCulture, out var hours)
+            && int.TryParse(eta[ranges[1]], NumberStyles.None, CultureInfo.InvariantCulture, out minutes)
+            && int.TryParse(eta[ranges[2]], NumberStyles.None, CultureInfo.InvariantCulture, out seconds))
+        {
+            return new TimeSpan(hours, minutes, seconds);
+        }
+
+        return null;
+    }
+
+    private static string? ExtractDestination(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return null;
+        }
+
+        var index = message.IndexOf(DestinationSentinel, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var raw = message[(index + DestinationSentinel.Length)..].Trim();
+        return raw.Trim('"');
+    }
+
+    private static string? ExtractAlreadyDownloadedPath(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return null;
+        }
+
+        var index = message.IndexOf(AlreadyDownloadedSentinel, StringComparison.OrdinalIgnoreCase);
+        if (index <= 0)
+        {
+            return null;
+        }
+
+        return message[..index].Trim();
     }
 }

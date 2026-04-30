@@ -20,12 +20,21 @@ public sealed record YtDlpProgress
     /// <summary>Speed string, e.g., <c>"2.50MiB/s"</c>.</summary>
     public string? Speed { get; init; }
 
-    /// <summary>ETA string, e.g., <c>"00:09"</c>.</summary>
-    public string? Eta { get; init; }
+    /// <summary>ETA parsed into a <see cref="TimeSpan"/>, when reported in <c>HH:MM:SS</c> / <c>MM:SS</c> form.</summary>
+    public TimeSpan? Eta { get; init; }
+
+    /// <summary>Output filename or path emitted by yt-dlp post-processors, when present.</summary>
+    public string? Destination { get; init; }
+
+    /// <summary>Free-form post-processor message, e.g., <c>"Merging formats into ..."</c>.</summary>
+    public string? Message { get; init; }
 
     /// <summary>The raw remainder of the line, for non-download phases.</summary>
     public string? AdditionalInfo { get; init; }
 
     /// <summary>The raw line as emitted by yt-dlp.</summary>
     public string? RawLine { get; init; }
+
+    /// <summary>UTC timestamp of when the event was parsed.</summary>
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 }

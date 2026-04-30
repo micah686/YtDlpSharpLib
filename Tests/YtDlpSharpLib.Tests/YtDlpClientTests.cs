@@ -307,7 +307,7 @@ public sealed class YtDlpClientTests
                     Assert.Equal(10 * 1024 * 1024, downloading.TotalBytes);
                     Assert.Equal(5 * 1024 * 1024, downloading.DownloadedBytes);
                     Assert.Equal("2.00MiB/s", downloading.Speed);
-                    Assert.Equal("00:05", downloading.Eta);
+                    Assert.Equal(TimeSpan.FromSeconds(5), downloading.Eta);
                 },
                 merging =>
                 {

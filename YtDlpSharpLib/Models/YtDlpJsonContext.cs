@@ -9,12 +9,15 @@ namespace YtDlpSharpLib.Models;
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    PropertyNameCaseInsensitive = true)]
+    PropertyNameCaseInsensitive = true,
+    GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(VideoInfo))]
+[JsonSerializable(typeof(List<VideoInfo>))]
 [JsonSerializable(typeof(FormatInfo))]
 [JsonSerializable(typeof(ThumbnailInfo))]
 [JsonSerializable(typeof(ChapterInfo))]
 [JsonSerializable(typeof(SubtitleTrack))]
+[JsonSerializable(typeof(CommentInfo))]
 public partial class YtDlpJsonContext : JsonSerializerContext
 {
 }
