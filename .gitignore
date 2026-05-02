@@ -180,6 +180,7 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+downloads/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
