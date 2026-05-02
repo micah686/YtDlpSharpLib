@@ -5,11 +5,21 @@ The library exposes a strongly-typed `IYtDlpClient`, a reflection-driven argumen
 covers every flag in `yt-dlp --help`, an optional binary downloader for yt-dlp/ffmpeg/ffprobe/Deno,
 and a small concurrency-limited execution scheduler for batch jobs.
 
+Used https://github.com/Bluegrams/YoutubeDLSharp as a reference for this library.
+
 - Targets `net10.0`.
 - Async-first; no blocking calls in the public surface.
 - Strongly-typed options grouped by yt-dlp help section (`General`, `Network`, `VideoFormat`,
   `PostProcessing`, `Subtitle`, `Authentication`, `SponsorBlock`, …).
-- Progress reporting via `IProgress<YtDlpProgress>` or `IAsyncEnumerable<YtDlpProgress>`.
+- Direct `RunWithOptionsAsync(...)` entry point for arbitrary single- or multi-URL invocations,
+  returning the captured `YtDlpProcessResult`.
+- Strongly-typed metadata (channel, uploader, live status, availability, music, series/episode,
+  comments, automatic captions, storyboards) with extension-data fallback for forward compatibility.
+- Progress reporting via `IProgress<YtDlpProgress>` or `IAsyncEnumerable<YtDlpProgress>`, including
+  `TimeSpan? Eta`, post-processor `Destination`/`Message`, and a fallback `Parse(...)` for any
+  yt-dlp line.
+- Concurrency-bounded scheduler that batches video / audio / playlist / audio-playlist / metadata /
+  live-chat jobs in one request model and accepts a per-call concurrency override.
 - Typed exceptions (`YtDlpProcessException`, `YtDlpNotFoundException`, `YtDlpValidationException`, …).
 - An escape hatch (`RawYtDlpArgument`) for any flag the typed surface does not yet model.
 
@@ -24,8 +34,10 @@ and a small concurrency-limited execution scheduler for batch jobs.
 - [Client API](#client-api)
 - [Options model](#options-model)
 - [Examples](#examples)
+  - [Run yt-dlp directly with typed options](#run-yt-dlp-directly-with-typed-options)
   - [Choosing a format and merge container](#choosing-a-format-and-merge-container)
   - [Audio-only download](#audio-only-download)
+  - [Per-call convenience flags](#per-call-convenience-flags)
   - [Output template and filename rules](#output-template-and-filename-rules)
   - [Playlists](#playlists)
   - [Date and filesize filters](#date-and-filesize-filters)
@@ -38,6 +50,8 @@ and a small concurrency-limited execution scheduler for batch jobs.
   - [Forwarding raw stdout/stderr](#forwarding-raw-stdoutstderr)
   - [Cancellation](#cancellation)
   - [Advanced (raw) arguments](#advanced-raw-arguments)
+  - [Composing options with `WithOverrides`](#composing-options-with-withoverrides)
+- [Metadata models](#metadata-models)
 - [Progress reporting](#progress-reporting)
 - [Batching with the execution scheduler](#batching-with-the-execution-scheduler)
 - [Binary provisioning (yt-dlp, ffmpeg, ffprobe, Deno)](#binary-provisioning-yt-dlp-ffmpeg-ffprobe-deno)
@@ -75,22 +89,13 @@ The library shells out to the real `yt-dlp` binary. You must either:
 
 ## Quick start (console / non-DI)
 
-`YtDlpClient` has a constructor that takes plain types, so it is usable without any DI container:
+The simplest constructor takes nothing at all and wires up the default renderer, process factory,
+and `TimeProvider`:
 
 ```csharp
 using YtDlpSharpLib;
-using YtDlpSharpLib.Process;
-using YtDlpSharpLib.Rendering;
 
-var client = new YtDlpClient(
-    new YtDlpClientOptions
-    {
-        YtDlpExecutablePath = "yt-dlp",   // or an absolute path
-        FfmpegExecutablePath = "ffmpeg",
-    },
-    new YtDlpProcessFactory(),
-    new YtDlpArgumentRenderer(),
-    TimeProvider.System);
+var client = new YtDlpClient();   // yt-dlp / ffmpeg resolved from PATH
 
 var info = await client.GetVideoInfoAsync("https://www.youtube.com/watch?v=C0DPdy98e4c");
 Console.WriteLine($"{info.Title} ({info.Duration}s)");
@@ -100,8 +105,31 @@ await client.DownloadAsync(
     outputDirectory: Path.Combine(Environment.CurrentDirectory, "downloads"));
 ```
 
-The four constructor dependencies are intentional — they are the same seams the DI registration
-uses, which makes the client easy to test with fakes.
+Pass a `YtDlpClientOptions` to the same constructor when you need to point at specific binaries
+or tweak the defaults:
+
+```csharp
+var client = new YtDlpClient(new YtDlpClientOptions
+{
+    YtDlpExecutablePath  = "/usr/local/bin/yt-dlp",
+    FfmpegExecutablePath = "/usr/local/bin/ffmpeg",
+});
+```
+
+If you want full control over the seams (e.g. supplying a fake `IYtDlpProcessFactory` in tests),
+the four-arg constructor is still available:
+
+```csharp
+using YtDlpSharpLib;
+using YtDlpSharpLib.Process;
+using YtDlpSharpLib.Rendering;
+
+var client = new YtDlpClient(
+    new YtDlpClientOptions { YtDlpExecutablePath = "yt-dlp", FfmpegExecutablePath = "ffmpeg" },
+    new YtDlpProcessFactory(),
+    new YtDlpArgumentRenderer(),
+    TimeProvider.System);
+```
 
 ## Quick start (dependency injection)
 
@@ -154,22 +182,33 @@ Otherwise the downloader creates and disposes its own.
 
 `IYtDlpClient` is the entire public download/inspect surface:
 
-| Method                                                                                         | Maps to                                              |
-|------------------------------------------------------------------------------------------------|------------------------------------------------------|
-| `GetVideoInfoAsync(url, ct)`                                                                   | `--dump-single-json --no-playlist`                   |
-| `GetPlaylistInfoAsync(url, ct)`                                                                | `--dump-json --yes-playlist --ignore-no-formats-error` (streamed) |
-| `DownloadAsync(url, outputDirectory, options, progress, ct)`                                   | a regular yt-dlp invocation                          |
-| `DownloadWithProgressAsync(url, outputDirectory, options, ct)`                                 | the same, exposed as `IAsyncEnumerable<YtDlpProgress>` |
-| `DownloadAudioAsync(url, outputDirectory, options, progress, ct)`                              | `-x --audio-format <fmt>`                            |
-| `DownloadPlaylistAsync(url, outputDirectory, options, progress, ct)`                           | `--yes-playlist [--playlist-items …]`                |
-| `DownloadAudioPlaylistAsync(url, outputDirectory, options, progress, ct)`                      | the union of the previous two                        |
-| `DownloadMetadataAsync(url, outputDirectory, options, ct)`                                     | `--write-info-json --skip-download` (+ thumb/subs)   |
-| `DownloadLiveChatAsync(url, outputDirectory, options, ct)`                                     | `--write-subs --sub-langs live_chat --skip-download` |
-| `GetVersionAsync(ct)`                                                                          | `--version`                                          |
+| Method                                                                                                    | Maps to                                                  |
+|-----------------------------------------------------------------------------------------------------------|----------------------------------------------------------|
+| `RunWithOptionsAsync(url, options, workingDir, progress, ct)`                                             | a direct `yt-dlp <rendered options> <url>` invocation    |
+| `RunWithOptionsAsync(urls, options, workingDir, progress, ct)`                                            | the same, but with a batch of URLs appended              |
+| `GetVideoInfoAsync(url, ct, flat, fetchComments, overrideOptions)`                                        | `--dump-single-json --no-playlist [--flat-playlist] [--write-comments] [<overrides>]` |
+| `TryGetVideoInfoAsync(url, ct, flat, fetchComments, overrideOptions)`                                     | the same, returning `RunResult<VideoInfo>` instead of throwing |
+| `GetPlaylistInfoAsync(url, ct)`                                                                           | `--dump-json --yes-playlist --ignore-no-formats-error` (streamed) |
+| `DownloadAsync(url, outputDirectory, options, progress, ct)`                                              | a regular yt-dlp invocation                              |
+| `DownloadWithProgressAsync(url, outputDirectory, options, ct)`                                            | the same, exposed as `IAsyncEnumerable<YtDlpProgress>`   |
+| `DownloadAudioAsync(url, outputDirectory, options, progress, ct)`                                         | `-x --audio-format <fmt>`                                |
+| `DownloadPlaylistAsync(url, outputDirectory, options, progress, ct)`                                      | `--yes-playlist [--playlist-items …]`                    |
+| `DownloadAudioPlaylistAsync(url, outputDirectory, options, progress, ct)`                                 | the union of the previous two                            |
+| `DownloadMetadataAsync(url, outputDirectory, options, ct)`                                                | `--write-info-json --skip-download` (+ thumb/subs)       |
+| `DownloadLiveChatAsync(url, outputDirectory, options, ct)`                                                | `--write-subs --sub-langs live_chat --skip-download`     |
+| `GetVersionAsync(ct)`                                                                                     | `--version`                                              |
+| `RunUpdateAsync(ct)`                                                                                      | `--update`                                               |
 
 `outputDirectory` is mandatory for every download method. If you do not set
 `YtDlpFilesystemOptions.Paths` yourself, the library will set it to `home:<outputDirectory>` so the
 files land where you said they should.
+
+`RunWithOptionsAsync` is the lowest-level entry point: it renders the supplied `YtDlpOptions`
+verbatim, appends the URL(s), and returns a `RunResult<YtDlpProcessResult>`. Process failures
+become `RunResult.Failed(...)` rather than thrown exceptions.
+
+The `RunWithOptions(...)` overloads (no `Async` suffix) are aliases that call straight into
+`RunWithOptionsAsync(...)` for callers that prefer the shorter name.
 
 ## Options model
 
@@ -199,11 +238,54 @@ var ytDlp = new YtDlpOptions
 ```
 
 Every group is a `record` with `init`-only properties, so it composes well with `with`-expressions
-and is safe to share across calls.
+and is safe to share across calls. To merge a base set of options with a few per-call overrides,
+see [Composing options with `WithOverrides`](#composing-options-with-withoverrides).
 
 ---
 
 ## Examples
+
+### Run yt-dlp directly with typed options
+
+When the high-level `DownloadXxxAsync` shapes do not fit (e.g. you are running a one-off pipeline
+that just wants whatever `yt-dlp --print after_move:filepath` produced), use
+`RunWithOptionsAsync` and inspect the captured `YtDlpProcessResult`:
+
+```csharp
+var result = await client.RunWithOptionsAsync(
+    "https://www.youtube.com/watch?v=C0DPdy98e4c",
+    new YtDlpOptions
+    {
+        Filesystem = new YtDlpFilesystemOptions { Paths = "home:downloads" },
+        VerbositySimulation = new YtDlpVerbositySimulationOptions
+        {
+            Print = ["after_move:%(filepath)s"],
+        },
+    },
+    workingDirectory: "downloads");
+
+if (result.Success && result.Data is { } proc)
+{
+    Console.WriteLine($"yt-dlp exit {proc.ExitCode}");
+    foreach (var line in proc.StandardOutputLines)
+        Console.WriteLine(line);
+}
+else
+{
+    Console.Error.WriteLine(result.ErrorOutput);
+}
+```
+
+The batch overload appends every URL after the rendered options:
+
+```csharp
+var batch = await client.RunWithOptionsAsync(
+    new[] { "https://...a", "https://...b", "https://...c" },
+    new YtDlpOptions
+    {
+        VideoFormat = new YtDlpVideoFormatOptions { Format = "bestaudio" }
+    });
+```
 
 ### Choosing a format and merge container
 
@@ -246,6 +328,36 @@ await client.DownloadAudioAsync(
 ```
 
 `AudioConversionFormat` covers `Best`, `Aac`, `Alac`, `Flac`, `M4a`, `Mp3`, `Opus`, `Vorbis`, `Wav`.
+
+### Per-call convenience flags
+
+Every download option record (`DownloadOptions`, `AudioDownloadOptions`,
+`PlaylistDownloadOptions`, `AudioPlaylistDownloadOptions`, `MetadataDownloadOptions`,
+`LiveChatDownloadOptions`) carries a small set of convenience flags so you do not have to drop
+into `YtDlpOptions` for the most common per-call overrides:
+
+| Flag                    | Effect                                                                           |
+|-------------------------|----------------------------------------------------------------------------------|
+| `AbortOnError`          | Force `--abort-on-error`; suppresses any inherited `IgnoreDownloadErrors` default. |
+| `OutputTemplate`        | Set `--output` for this call only.                                                |
+| `RestrictFilenames`     | `true` → `--restrict-filenames`, `false` → `--no-restrict-filenames`.             |
+| `OverwriteFiles`        | `true` → `--force-overwrites`, `false` → `--no-overwrites --no-force-overwrites`. |
+| `IgnoreDownloadErrors`  | `true` → `--ignore-errors`, `false` → `--abort-on-error`.                         |
+
+```csharp
+await client.DownloadAsync(
+    "https://...",
+    outputDirectory: "downloads",
+    new DownloadOptions
+    {
+        OutputTemplate       = "%(id)s.%(ext)s",
+        RestrictFilenames    = true,
+        OverwriteFiles       = true,
+        IgnoreDownloadErrors = false,    // explicit --abort-on-error this call
+    });
+```
+
+The convenience flags compose on top of any `YtDlp` overrides you set on the same record.
 
 ### Output template and filename rules
 
@@ -299,6 +411,14 @@ await foreach (var entry in client.GetPlaylistInfoAsync("https://...playlist..."
 {
     Console.WriteLine($"{entry.Id} - {entry.Title}");
 }
+
+// Or fetch a single shallow listing, with comments:
+var shallow = await client.GetVideoInfoAsync(
+    "https://...playlist...",
+    flat: true,
+    fetchComments: false);
+
+Console.WriteLine($"playlist: {shallow.PlaylistTitle} ({shallow.PlaylistCount} entries)");
 ```
 
 ### Date and filesize filters
@@ -498,6 +618,92 @@ var ytDlp = new YtDlpOptions
 Raw arguments must start with `--` (long-form). Renderer validation throws
 `YtDlpValidationException` otherwise.
 
+### Composing options with `WithOverrides`
+
+`YtDlpOptions.WithOverrides(...)` merges an "override" set on top of a base set, copying every
+explicitly-set value (non-null strings/nullables, `true` switches, non-empty collections) and —
+crucially — clearing any opposite boolean switch the override introduced. So if you turn on
+`--no-overwrites` in the override, the base's `--force-overwrites` is wiped; turning on
+`--restrict-filenames` wipes the base's `--no-restrict-filenames`.
+
+```csharp
+var defaults = new YtDlpOptions
+{
+    Filesystem = new YtDlpFilesystemOptions
+    {
+        ForceOverwrites = true,
+        RestrictFilenames = true,
+    }
+};
+
+var perCall = new YtDlpOptions
+{
+    Filesystem = new YtDlpFilesystemOptions
+    {
+        NoOverwrites         = true,   // wipes ForceOverwrites
+        NoRestrictFilenames  = true,   // wipes RestrictFilenames
+    }
+};
+
+var merged = defaults.WithOverrides(perCall);
+// merged.Filesystem.NoOverwrites         == true
+// merged.Filesystem.ForceOverwrites      == false
+// merged.Filesystem.NoRestrictFilenames  == true
+// merged.Filesystem.RestrictFilenames    == false
+```
+
+If you want the older behaviour that retains both opposing switches verbatim,
+`OverrideOptions(...)` is still on `YtDlpOptionsExtensions` for backwards compatibility.
+
+---
+
+## Metadata models
+
+`GetVideoInfoAsync` and `GetPlaylistInfoAsync` return strongly-typed `VideoInfo` records modelled
+after yt-dlp's `--dump-json` output. The model covers (non-exhaustive):
+
+- Identification: `_type` (as `MetadataType?`), `Id`, `Title`, `FullTitle`, `AltTitle`, `DisplayId`.
+- Dates: `UploadDate`, computed `ParsedUploadDate`, `Timestamp`, `ReleaseTimestamp`,
+  `ReleaseDate`, `ModifiedTimestamp`, `ModifiedDate`.
+- Channel / uploader: `Channel`, `ChannelId`, `ChannelUrl`, `ChannelFollowerCount`, `Uploader`,
+  `UploaderId`, `UploaderUrl`, `Creator`, `Creators`, `License`.
+- Engagement: `ViewCount`, `LikeCount`, `DislikeCount`, `RepostCount`, `CommentCount`,
+  `ConcurrentViewCount`, `AverageRating`.
+- Live state: `IsLive`, `WasLive`, `LiveStatus` (typed enum: `IsLive`/`WasLive`/`IsUpcoming`/…),
+  `StartTime`, `EndTime`, `Availability` (typed enum: `Public`/`Private`/`Unlisted`/…).
+- Music: `Track`, `TrackNumber`, `Artist`, `Artists`, `Album`, `AlbumArtist`, `AlbumArtists`,
+  `DiscNumber`, `ReleaseYear`, `Genre`.
+- Playlist / container: `Entries`, `PlaylistId`, `PlaylistTitle`, `PlaylistIndex`, `PlaylistCount`,
+  `Series`, `Season`, `SeasonNumber`, `Episode`, `EpisodeNumber`, `SectionTitle`, `SectionStart`,
+  `SectionEnd`.
+- Collections: `Formats` (`FormatInfo`), `Thumbnails` (`ThumbnailInfo`), `Chapters`
+  (`ChapterInfo`), `Subtitles` and `AutomaticCaptions` (`Dictionary<string, IReadOnlyList<SubtitleTrack>>`),
+  `Comments` (`CommentInfo`).
+- Storyboards (`JsonElement?`) and a fallback `ExtensionData` dictionary that captures any
+  extractor-specific fields the typed model does not explicitly enumerate, so new fields keep
+  flowing through after a yt-dlp upgrade.
+
+`FormatInfo` likewise carries the full set: `Url`, `FormatId`, `Format`, `FormatNote`, `Ext`,
+`Resolution`, `Width`, `Height`, `Filesize`, `FilesizeApprox`, `Fps`, `Tbr`, `Vbr`, `Abr`, `Asr`,
+`Vcodec`, `Acodec`, `DynamicRange`, `AudioExt`, `VideoExt`, `Protocol`, `Language`, `Quality`,
+`Preference`, `PlayerUrl`, `HttpHeaders`, plus an `ExtensionData` fallback. `ThumbnailInfo` and
+`SubtitleTrack` carry the same `Ext`/`Filesize`/`HttpHeaders`/`ExtensionData` shape.
+
+```csharp
+var info = await client.GetVideoInfoAsync(
+    "https://...",
+    fetchComments: true);
+
+Console.WriteLine($"{info.Channel} ({info.ChannelFollowerCount:N0} followers)");
+if (info.LiveStatus is LiveStatus.IsLive) Console.WriteLine("LIVE NOW");
+
+foreach (var fmt in info.Formats ?? [])
+    Console.WriteLine($"  {fmt.FormatId,-12} {fmt.Resolution,-10} {fmt.Vcodec}/{fmt.Acodec}");
+
+foreach (var c in info.Comments ?? [])
+    Console.WriteLine($"  [{c.Author}] {c.Text}");
+```
+
 ---
 
 ## Progress reporting
@@ -511,7 +717,12 @@ var progress = new Progress<YtDlpProgress>(p =>
 {
     if (p.Phase == ProgressPhase.Downloading && p.Percent is { } pct)
     {
-        Console.WriteLine($"[download] {pct,6:F1}%   {p.Speed}   ETA {p.Eta}");
+        Console.WriteLine(
+            $"[download] {pct,6:F1}%   {p.Speed}   ETA {p.Eta:hh\\:mm\\:ss}");
+    }
+    else if (p.Phase == ProgressPhase.Finished)
+    {
+        Console.WriteLine($"[done] {p.Destination ?? p.Message}");
     }
 });
 
@@ -525,13 +736,15 @@ await foreach (var p in client.DownloadWithProgressAsync(url, "downloads"))
 {
     switch (p.Phase)
     {
-        case ProgressPhase.Downloading:    /* p.Percent / p.TotalBytes / p.Speed */ break;
-        case ProgressPhase.Merging:        /* ffmpeg merging */                     break;
-        case ProgressPhase.ExtractingAudio:/* audio extraction */                   break;
-        case ProgressPhase.Converting:     /* recoding */                           break;
-        case ProgressPhase.EmbeddingThumbnail: /* */                                break;
-        case ProgressPhase.PostProcessing: /* */                                    break;
-        case ProgressPhase.Completed:      /* */                                    break;
+        case ProgressPhase.Downloading:        /* p.Percent / p.TotalBytes / p.Speed / p.Eta */ break;
+        case ProgressPhase.Finished:           /* 100% or already-on-disk; p.Destination set */ break;
+        case ProgressPhase.Merging:            /* ffmpeg merging */                              break;
+        case ProgressPhase.ExtractingAudio:    /* audio extraction; p.Destination set */         break;
+        case ProgressPhase.Converting:         /* recoding */                                    break;
+        case ProgressPhase.EmbeddingThumbnail: /* */                                             break;
+        case ProgressPhase.PostProcessing:     /* */                                             break;
+        case ProgressPhase.Completed:          /* */                                             break;
+        case ProgressPhase.Unknown:            /* unrecognised line; p.Message has it raw */     break;
     }
 }
 ```
@@ -540,8 +753,26 @@ await foreach (var p in client.DownloadWithProgressAsync(url, "downloads"))
 > `VerbositySimulation = new YtDlpVerbositySimulationOptions { Newline = true }` so each progress
 > tick is its own line.
 
-`YtDlpProgress` exposes `Percent`, `DownloadedBytes`, `TotalBytes`, `Speed` (e.g. `"2.50MiB/s"`),
-`Eta`, an `AdditionalInfo` field for non-download phases, and the `RawLine` for diagnostics.
+`YtDlpProgress` exposes:
+
+| Property         | Notes                                                                          |
+|------------------|--------------------------------------------------------------------------------|
+| `Phase`          | One of the values above.                                                       |
+| `Percent`        | 0-100, when the line was a download tick.                                      |
+| `DownloadedBytes`| Computed as `Percent × TotalBytes / 100`.                                      |
+| `TotalBytes`     | Parsed from `KiB`/`MiB`/`GiB`/`TiB`/`KB`/`MB`/`GB`/`TB`/`B`.                   |
+| `Speed`          | Raw token, e.g. `"2.50MiB/s"`.                                                 |
+| `Eta`            | **`TimeSpan?`**, parsed from `MM:SS` / `HH:MM:SS`.                             |
+| `Destination`    | Output path emitted by `Destination:` lines and `… has already been downloaded`. |
+| `Message`        | The post-prefix text of the line.                                              |
+| `AdditionalInfo` | The same text, kept for backwards compatibility.                               |
+| `RawLine`        | Original line, for diagnostics.                                                |
+| `Timestamp`      | UTC time of parse.                                                             |
+
+For ad-hoc parsing of a single line, `ProgressLineParser.TryParse(line, out var p)` returns
+`false` for unrecognised lines. A `ProgressLineParser.Parse(line)` fallback always returns a
+`YtDlpProgress` (using `Phase = Unknown` for unrecognised lines), which is handy when you are
+piping arbitrary stdout through your own UI.
 
 ---
 
@@ -555,37 +786,67 @@ var scheduler = provider.GetRequiredService<IYtDlpExecutionScheduler>();
 
 var requests = new[]
 {
-    new DownloadRequest { Url = "https://example.test/a", OutputDirectory = "downloads" },
-    new DownloadRequest { Url = "https://example.test/b", OutputDirectory = "downloads" },
+    // Plain video.
     new DownloadRequest
     {
-        Url             = "https://example.test/c",
+        Url             = "https://example.test/a",
         OutputDirectory = "downloads",
-        Options         = new DownloadOptions
+    },
+
+    // Audio-only.
+    new DownloadRequest
+    {
+        Url             = "https://example.test/b",
+        OutputDirectory = "downloads",
+        Kind            = DownloadRequestKind.Audio,
+        AudioOptions    = new AudioDownloadOptions { AudioFormat = AudioConversionFormat.Mp3 },
+    },
+
+    // Playlist with custom format.
+    new DownloadRequest
+    {
+        Url             = "https://example.test/playlist",
+        OutputDirectory = "downloads",
+        Kind            = DownloadRequestKind.Playlist,
+        PlaylistOptions = new PlaylistDownloadOptions
         {
+            PlaylistItems = "1-10",
             YtDlp = new YtDlpOptions
             {
                 VideoFormat = new YtDlpVideoFormatOptions { Format = "bestaudio" }
             }
-        }
+        },
+    },
+
+    // Metadata sidecars only.
+    new DownloadRequest
+    {
+        Url             = "https://example.test/c",
+        OutputDirectory = "downloads",
+        Kind            = DownloadRequestKind.Metadata,
+        MetadataOptions = new MetadataDownloadOptions { WriteThumbnail = true },
     },
 };
 
-await foreach (var result in scheduler.ExecuteBulkAsync(requests))
+// maxConcurrency is optional; null falls back to YtDlpClientOptions.DownloadConcurrency.
+await foreach (var result in scheduler.ExecuteAsync(requests, maxConcurrency: 3))
 {
-    if (result.Error is null)
-    {
+    if (result.Success)
         Console.WriteLine($"OK   {result.Url} (exit {result.ExitCode})");
-    }
     else
-    {
-        Console.WriteLine($"FAIL {result.Url}: {result.Error.Message}");
-    }
+        Console.WriteLine($"FAIL {result.Url}: {result.ErrorOutput}");
 }
 ```
 
-The concurrency limit comes from `YtDlpClientOptions.DownloadConcurrency` (default `2`). Failures
-of individual jobs are surfaced via `DownloadResult.Error`; they do not stop sibling jobs.
+`DownloadRequest.Kind` selects which `DownloadXxxAsync` method the scheduler calls and which of the
+typed option records (`DownloadOptions`, `AudioOptions`, `PlaylistOptions`, `AudioPlaylistOptions`,
+`MetadataOptions`, `LiveChatOptions`) is honoured. Per-request `Progress` reporters are routed
+through to the underlying client call.
+
+Concurrency comes from `YtDlpClientOptions.DownloadConcurrency` (default `2`); the optional
+`maxConcurrency` argument on `ExecuteAsync` overrides it for that batch only. `ExecuteBulkAsync` is
+retained as a thin alias for the no-override case. Failures of individual jobs are surfaced via
+`DownloadResult.Success`/`ErrorOutput`/`Error`/`ExitCode`; they do not stop sibling jobs.
 
 ---
 
@@ -676,6 +937,10 @@ catch (YtDlpNotFoundException ex)
 }
 ```
 
+The `Try`-prefixed variants (`TryGetVideoInfoAsync`, `TryDownloadAsync`) and `RunWithOptionsAsync`
+return a `RunResult` / `RunResult<T>` instead of throwing for `YtDlpException`-derived failures —
+useful when you want to handle errors without unwinding the stack.
+
 ---
 
 ## Configuration reference (`YtDlpClientOptions`)
@@ -684,12 +949,21 @@ catch (YtDlpNotFoundException ex)
 |----------------------------|------------------|-------------------------------------------------------------------------|
 | `YtDlpExecutablePath`      | `"yt-dlp"`       | Path to the yt-dlp binary (resolved against `PATH` if relative).        |
 | `FfmpegExecutablePath`     | `"ffmpeg"`       | Path to ffmpeg, used by yt-dlp for merge/convert.                       |
+| `OutputFolder`             | `null`           | Default output folder; per-call `Filesystem.Paths` wins when set.       |
+| `OutputFileTemplate`       | `null`           | Default `--output` template; per-call `Filesystem.Output` wins when set.|
+| `RestrictFilenames`        | `false`          | Default `--restrict-filenames`; per-call filename flags win when set.   |
+| `OverwriteFiles`           | `false`          | Default `--force-overwrites`; per-call overwrite flags win when set.    |
+| `IgnoreDownloadErrors`     | `false`          | Default `--ignore-errors`; per-call `AbortOnError` wins when set.       |
 | `DownloadConcurrency`      | `2`              | Max concurrent downloads for `IYtDlpExecutionScheduler`.                |
 | `TerminationGracePeriod`   | `5s`             | Grace given to yt-dlp after a graceful kill before force-killing tree.  |
 | `StderrTailLineCount`      | `100`            | Lines of stderr retained for non-zero-exit error reporting.             |
 | `StdoutForwardingWriter`   | `null`           | Mirror yt-dlp stdout to this `TextWriter` (e.g. `Console.Out`).         |
 | `StderrForwardingWriter`   | `null`           | Mirror yt-dlp stderr to this `TextWriter`.                              |
 | `EnvironmentVariables`     | empty            | Extra env vars passed to the yt-dlp child process.                      |
+
+The same defaults are exposed as mutable convenience properties on `YtDlpClient`
+(`OutputFolder`, `OutputFileTemplate`, `RestrictFilenames`, `OverwriteFiles`,
+`IgnoreDownloadErrors`) so they can be flipped at runtime without rebuilding the options record.
 
 For development, build, and contribution guidance — including the option-generator tooling — see
 [`DEVELOPMENT.md`](./DEVELOPMENT.md).
