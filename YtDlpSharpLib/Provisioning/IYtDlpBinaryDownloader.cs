@@ -37,8 +37,18 @@ public interface IYtDlpBinaryDownloader
         CancellationToken ct = default);
 
     /// <summary>
-    /// Downloads any combination of yt-dlp, ffmpeg, ffprobe, and Deno according to <paramref name="options"/>.
-    /// Failures bubble up as exceptions; partial results are not returned.
+    /// Downloads and extracts the bgutil-ytdlp-pot-provider yt-dlp plugin into a <c>yt-dlp-plugins</c>
+    /// directory under <paramref name="directory"/>. Returns the directory to pass to yt-dlp's
+    /// <c>--plugin-dirs</c> (the parent of the extracted <c>yt_dlp_plugins</c> tree).
+    /// </summary>
+    Task<string> DownloadBgUtilPluginAsync(
+        string? directory = null,
+        IProgress<BinaryDownloadProgress>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads any combination of yt-dlp, ffmpeg, ffprobe, Deno, and the bgutil plugin according to
+    /// <paramref name="options"/>. Failures bubble up as exceptions; partial results are not returned.
     /// </summary>
     Task<BinaryDownloadResult> DownloadAllAsync(
         BinaryDownloadOptions? options = null,

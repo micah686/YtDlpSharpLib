@@ -17,4 +17,10 @@ public sealed record BinaryDownloadResult
 
     /// <summary>Path to the Deno executable, when requested.</summary>
     public string? DenoPath { get; init; }
+
+    /// <summary>
+    /// Path to the directory that should be passed to yt-dlp's <c>--plugin-dirs</c> (the parent of the
+    /// extracted <c>yt_dlp_plugins</c> tree), when the bgutil plugin was requested; otherwise <see langword="null"/>.
+    /// </summary>
+    public string? BgUtilPluginDir { get; init; }
 }

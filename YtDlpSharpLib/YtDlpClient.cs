@@ -281,7 +281,8 @@ public sealed class YtDlpClient : IYtDlpClient
     /// <inheritdoc />
     public async IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(
         string url,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default,
+        YtDlpOptions? overrideOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
 
@@ -289,9 +290,16 @@ public sealed class YtDlpClient : IYtDlpClient
         {
             "--dump-json",
             "--yes-playlist",
-            "--ignore-no-formats-error",
-            url
+            "--ignore-no-formats-error"
         };
+
+        if (overrideOptions is not null)
+        {
+            args.AddRange(_renderer.Render(overrideOptions));
+        }
+
+        args.Add(url);
+
         var startInfo = BuildBareStartInfo(args);
 
         await foreach (var line in StreamStdoutAsync(startInfo, ct).ConfigureAwait(false))

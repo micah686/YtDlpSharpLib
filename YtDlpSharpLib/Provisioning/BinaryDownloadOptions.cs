@@ -27,4 +27,10 @@ public sealed record BinaryDownloadOptions
 
     /// <summary>Whether to download the Deno JavaScript runtime.</summary>
     public bool DownloadDeno { get; init; } = true;
+
+    /// <summary>
+    /// Whether to download and extract the bgutil-ytdlp-pot-provider yt-dlp plugin into a
+    /// <c>yt-dlp-plugins</c> directory under the target directory. Off by default; the Worker opts in.
+    /// </summary>
+    public bool DownloadBgUtilPlugin { get; init; }
 }

@@ -147,6 +147,57 @@ public sealed class YtDlpBinaryDownloader : IYtDlpBinaryDownloader, IDisposable
     }
 
     /// <inheritdoc />
+    public async Task<string> DownloadBgUtilPluginAsync(
+        string? directory = null,
+        IProgress<BinaryDownloadProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+
+        var url = string.Format(
+            CultureInfo.InvariantCulture,
+            _options.BgUtilPluginUrlTemplate,
+            _options.BgUtilPluginVersion);
+
+        var dir = ResolveDirectory(directory);
+        var pluginRoot = Path.Combine(dir, _options.BgUtilPluginDirectoryName);
+
+        await using var memory = new MemoryStream();
+        try
+        {
+            await DownloadToStreamAsync(url, memory, BinaryKind.BgUtilPlugin, progress, ct).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new YtDlpBinaryDownloadException($"Failed to download the bgutil plugin from {url}.", url, ex);
+        }
+
+        memory.Position = 0;
+
+        // Extract into a staging dir then swap into place so a half-extracted tree is never left behind
+        // (and never satisfies the SkipExisting check on the next run).
+        var stagingRoot = pluginRoot + ".download";
+        TryDeleteDirectory(stagingRoot);
+        Directory.CreateDirectory(stagingRoot);
+
+        try
+        {
+            using var archive = new ZipArchive(memory, ZipArchiveMode.Read);
+            ExtractArchive(archive, stagingRoot, url);
+
+            TryDeleteDirectory(pluginRoot);
+            Directory.Move(stagingRoot, pluginRoot);
+        }
+        catch
+        {
+            TryDeleteDirectory(stagingRoot);
+            throw;
+        }
+
+        return pluginRoot;
+    }
+
+    /// <inheritdoc />
     public async Task<BinaryDownloadResult> DownloadAllAsync(
         BinaryDownloadOptions? options = null,
         IProgress<BinaryDownloadProgress>? progress = null,
@@ -162,6 +213,7 @@ public sealed class YtDlpBinaryDownloader : IYtDlpBinaryDownloader, IDisposable
         string? ffmpegPath = null;
         string? ffprobePath = null;
         string? denoPath = null;
+        string? bgUtilPluginDir = null;
 
         if (resolved.DownloadYtDlp)
         {
@@ -195,12 +247,22 @@ public sealed class YtDlpBinaryDownloader : IYtDlpBinaryDownloader, IDisposable
                 : await DownloadDenoAsync(dir, progress, ct).ConfigureAwait(false);
         }
 
+        if (resolved.DownloadBgUtilPlugin)
+        {
+            var expected = Path.Combine(dir, _options.BgUtilPluginDirectoryName);
+            // The extracted package tree lives under <pluginRoot>/yt_dlp_plugins; treat its presence as "already provisioned".
+            bgUtilPluginDir = (resolved.SkipExisting && Directory.Exists(Path.Combine(expected, "yt_dlp_plugins")))
+                ? expected
+                : await DownloadBgUtilPluginAsync(dir, progress, ct).ConfigureAwait(false);
+        }
+
         return new BinaryDownloadResult
         {
             YtDlpPath = ytDlpPath,
             FfmpegPath = ffmpegPath,
             FfprobePath = ffprobePath,
-            DenoPath = denoPath
+            DenoPath = denoPath,
+            BgUtilPluginDir = bgUtilPluginDir
         };
     }
 
@@ -654,6 +716,53 @@ public sealed class YtDlpBinaryDownloader : IYtDlpBinaryDownloader, IDisposable
         {
         }
         catch (IOException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Extracts every file entry of <paramref name="archive"/> under <paramref name="destinationRoot"/>,
+    /// preserving the archive's directory structure and guarding against path-traversal ("zip slip").
+    /// </summary>
+    private static void ExtractArchive(ZipArchive archive, string destinationRoot, string sourceUrl)
+    {
+        var rootFull = Path.GetFullPath(destinationRoot + Path.DirectorySeparatorChar);
+
+        foreach (var entry in archive.Entries)
+        {
+            // Directory entries have an empty Name; their structure is recreated from file paths below.
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                continue;
+            }
+
+            var destination = Path.GetFullPath(Path.Combine(destinationRoot, entry.FullName));
+            if (!destination.StartsWith(rootFull, StringComparison.Ordinal))
+            {
+                throw new YtDlpBinaryDownloadException(
+                    $"Archive entry '{entry.FullName}' escapes the extraction directory.",
+                    sourceUrl);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            entry.ExtractToFile(destination, overwrite: true);
+        }
+    }
+
+    [SuppressMessage(
+        "Reliability",
+        "CA1031:Do not catch general exception types",
+        Justification = "Best-effort cleanup of a staging directory; surface the real error rather than the cleanup failure.")]
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch
         {
         }
     }
