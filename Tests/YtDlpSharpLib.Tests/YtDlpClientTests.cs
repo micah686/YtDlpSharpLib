@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using YtDlpSharpLib.Downloads;
 using YtDlpSharpLib.Exceptions;
@@ -33,7 +34,7 @@ public sealed class YtDlpClientTests
         Assert.Equal(new DateOnly(2008, 5, 30), info.ParsedUploadDate);
         Assert.Equal(596, info.Duration);
         Assert.Equal(VimeoUrl, info.WebpageUrl);
-        var format = Assert.Single(info.Formats);
+        var format = Assert.Single(info.Formats!);
         Assert.Equal("http-540p", format.FormatId);
         Assert.Equal("960x540", format.Resolution);
         Assert.Equal(1234567, format.Filesize);
@@ -136,6 +137,42 @@ public sealed class YtDlpClientTests
     }
 
     [Fact]
+    public async Task DownloadAsync_AppliesClientDownloadThrottleDefaults()
+    {
+        var factory = new FakeProcessFactory(new FakeYtDlpProcess());
+        var client = CreateClient(
+            factory,
+            new YtDlpClientOptions
+            {
+                YtDlpExecutablePath = "yt-dlp-test",
+                DownloadLimitRate = "500K",
+                DownloadThrottledRate = "100K"
+            });
+        var outputDirectory = CreateTempDirectory();
+
+        try
+        {
+            await client.DownloadAsync(VimeoUrl, outputDirectory);
+
+            Assert.Equal(
+                [
+                    "--limit-rate",
+                    "500K",
+                    "--throttled-rate",
+                    "100K",
+                    "--paths",
+                    $"home:{outputDirectory}",
+                    VimeoUrl
+                ],
+                factory.SingleStartInfo.Arguments);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DownloadAsync_ClientConveniencePropertiesCanBeMutatedAtRuntime()
     {
         var factory = new FakeProcessFactory(new FakeYtDlpProcess());
@@ -189,7 +226,9 @@ public sealed class YtDlpClientTests
                 OutputFileTemplate = "%(title)s.%(ext)s",
                 RestrictFilenames = true,
                 OverwriteFiles = true,
-                IgnoreDownloadErrors = true
+                IgnoreDownloadErrors = true,
+                DownloadLimitRate = "500K",
+                DownloadThrottledRate = "100K"
             });
         var outputDirectory = CreateTempDirectory();
 
@@ -212,6 +251,11 @@ public sealed class YtDlpClientTests
                             Output = "%(id)s.%(ext)s",
                             NoRestrictFilenames = true,
                             NoOverwrites = true
+                        },
+                        Download = new YtDlpDownloadOptions
+                        {
+                            LimitRate = "1M",
+                            ThrottledRate = "250K"
                         }
                     }
                 });
@@ -219,6 +263,10 @@ public sealed class YtDlpClientTests
             Assert.Equal(
                 [
                     "--abort-on-error",
+                    "--limit-rate",
+                    "1M",
+                    "--throttled-rate",
+                    "250K",
                     "--paths",
                     "home:/per-call",
                     "--output",
@@ -433,6 +481,48 @@ public sealed class YtDlpClientTests
     }
 
     [Fact]
+    public async Task ProcessStartGate_IsUsedBeforeEveryProcessStart()
+    {
+        var factory = new FakeProcessFactory(
+            new FakeYtDlpProcess(["1.0.0"]),
+            new FakeYtDlpProcess(),
+            new FakeYtDlpProcess([MinimalVideoJson("one", "First clip")]));
+        var gate = new RecordingProcessStartGate();
+        var client = CreateClient(factory, processStartGate: gate);
+        var outputDirectory = CreateTempDirectory();
+
+        try
+        {
+            await client.GetVersionAsync();
+            await client.DownloadAsync(VimeoUrl, outputDirectory);
+            await foreach (var _ in client.GetPlaylistInfoAsync(VimeoUrl))
+            {
+            }
+
+            Assert.Equal(3, gate.Calls);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessStartGate_SpacesStarts()
+    {
+        using var gate = new YtDlpProcessStartGate(
+            new YtDlpClientOptions { MinimumDelayBetweenProcessStarts = TimeSpan.FromMilliseconds(30) },
+            TimeProvider.System);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        await gate.WaitForTurnAsync(CancellationToken.None);
+        await gate.WaitForTurnAsync(CancellationToken.None);
+
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(20));
+    }
+
+    [Fact]
     public async Task RunUpdateAsync_InvokesYtDlpUpdatePassthrough()
     {
         var factory = new FakeProcessFactory(new FakeYtDlpProcess());
@@ -443,12 +533,16 @@ public sealed class YtDlpClientTests
         Assert.Equal(["--update"], factory.SingleStartInfo.Arguments);
     }
 
-    private static YtDlpClient CreateClient(FakeProcessFactory factory, YtDlpClientOptions? options = null) =>
+    private static YtDlpClient CreateClient(
+        FakeProcessFactory factory,
+        YtDlpClientOptions? options = null,
+        IYtDlpProcessStartGate? processStartGate = null) =>
         new(
             options ?? new YtDlpClientOptions { YtDlpExecutablePath = "yt-dlp-test" },
             factory,
             new YtDlpArgumentRenderer(),
-            TimeProvider.System);
+            TimeProvider.System,
+            processStartGate);
 
     private static string MinimalVideoJson(string id, string title) =>
         $$"""
@@ -479,6 +573,18 @@ public sealed class YtDlpClientTests
             _startInfos.Add(startInfo);
             Assert.True(_processes.TryDequeue(out var process), "No fake yt-dlp process was configured.");
             return process;
+        }
+    }
+
+    private sealed class RecordingProcessStartGate : IYtDlpProcessStartGate
+    {
+        public int Calls { get; private set; }
+
+        public ValueTask WaitForTurnAsync(CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Calls++;
+            return ValueTask.CompletedTask;
         }
     }
 

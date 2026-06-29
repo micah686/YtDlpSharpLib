@@ -39,6 +39,15 @@ public sealed record YtDlpClientOptions
     /// <summary>Default maximum number of concurrent downloads for the execution scheduler.</summary>
     public int DownloadConcurrency { get; init; } = 2;
 
+    /// <summary>Default maximum download rate passed to yt-dlp as <c>--limit-rate</c>, e.g. <c>500K</c> or <c>4.2M</c>.</summary>
+    public string? DownloadLimitRate { get; init; }
+
+    /// <summary>Default minimum rate passed to yt-dlp as <c>--throttled-rate</c>, e.g. <c>100K</c>.</summary>
+    public string? DownloadThrottledRate { get; init; }
+
+    /// <summary>Minimum delay between starting yt-dlp child processes. Does not limit already-running process concurrency.</summary>
+    public TimeSpan? MinimumDelayBetweenProcessStarts { get; init; }
+
     /// <summary>
     /// Grace period given to yt-dlp to clean up after a graceful kill before the process tree is force-killed.
     /// </summary>
