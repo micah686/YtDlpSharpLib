@@ -91,7 +91,7 @@ public interface IYtDlpClient
         YtDlpOptions? overrideOptions = null);
 
     /// <summary>Streams video metadata for each entry of a playlist.</summary>
-    IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(string url, CancellationToken ct = default);
+    IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(string url, CancellationToken ct = default, YtDlpOptions? overrideOptions = null);
 
     /// <summary>Downloads a video, optionally reporting progress through the supplied callback.</summary>
     Task DownloadAsync(

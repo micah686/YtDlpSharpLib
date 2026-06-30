@@ -38,4 +38,21 @@ public sealed record YtDlpBinaryDownloaderOptions
     /// Format string for the Deno download URL. Token <c>{0}</c> is the version string, token <c>{1}</c> is the platform target.
     /// </summary>
     public string DenoDownloadUrlTemplate { get; init; } = "https://dl.deno.land/release/{0}/deno-{1}.zip";
+
+    /// <summary>
+    /// Release tag of the bgutil-ytdlp-pot-provider plugin to download. Must match the version of the
+    /// provider server the tokens are minted by (the project requires plugin/server versions to match).
+    /// </summary>
+    public string BgUtilPluginVersion { get; init; } = "1.3.1";
+
+    /// <summary>
+    /// Format string for the bgutil plugin release zip URL. Token <c>{0}</c> is <see cref="BgUtilPluginVersion"/>.
+    /// The archive contains a <c>yt_dlp_plugins</c> package tree that is extracted into a
+    /// <c>yt-dlp-plugins</c> directory passed to yt-dlp's <c>--plugin-dirs</c>.
+    /// </summary>
+    public string BgUtilPluginUrlTemplate { get; init; } =
+        "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/{0}/bgutil-ytdlp-pot-provider.zip";
+
+    /// <summary>Name of the directory (under the target directory) the plugin is extracted into.</summary>
+    public string BgUtilPluginDirectoryName { get; init; } = "yt-dlp-plugins";
 }

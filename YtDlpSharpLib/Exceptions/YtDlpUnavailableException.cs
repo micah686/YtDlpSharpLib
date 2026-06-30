@@ -4,7 +4,7 @@ namespace YtDlpSharpLib.Exceptions;
 /// Thrown when yt-dlp reports a known domain condition such as a removed,
 /// geo-blocked, or otherwise unavailable video.
 /// </summary>
-public sealed class YtDlpUnavailableException : YtDlpException
+public class YtDlpUnavailableException : YtDlpException
 {
     /// <inheritdoc />
     public YtDlpUnavailableException(

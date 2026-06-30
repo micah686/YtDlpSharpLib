@@ -15,5 +15,8 @@ public enum BinaryKind
     Ffprobe,
 
     /// <summary>The Deno JavaScript runtime executable.</summary>
-    Deno
+    Deno,
+
+    /// <summary>The bgutil-ytdlp-pot-provider yt-dlp plugin package (a zip of a yt_dlp_plugins tree).</summary>
+    BgUtilPlugin
 }

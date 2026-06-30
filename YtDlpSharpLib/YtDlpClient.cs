@@ -26,6 +26,7 @@ public sealed class YtDlpClient : IYtDlpClient
     private readonly IYtDlpProcessFactory _factory;
     private readonly IYtDlpArgumentRenderer _renderer;
     private readonly TimeProvider _timeProvider;
+    private readonly IYtDlpProcessStartGate _processStartGate;
     private YtDlpOptions _defaultYtDlpOptions;
 
     /// <summary>
@@ -46,7 +47,8 @@ public sealed class YtDlpClient : IYtDlpClient
         YtDlpClientOptions options,
         IYtDlpProcessFactory processFactory,
         IYtDlpArgumentRenderer argumentRenderer,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IYtDlpProcessStartGate? processStartGate = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(processFactory);
@@ -57,6 +59,7 @@ public sealed class YtDlpClient : IYtDlpClient
         _factory = processFactory;
         _renderer = argumentRenderer;
         _timeProvider = timeProvider;
+        _processStartGate = processStartGate ?? new YtDlpProcessStartGate(options, timeProvider);
         _defaultYtDlpOptions = BuildDefaultYtDlpOptions(options);
     }
 
@@ -65,12 +68,14 @@ public sealed class YtDlpClient : IYtDlpClient
         IOptions<YtDlpClientOptions> options,
         IYtDlpProcessFactory processFactory,
         IYtDlpArgumentRenderer argumentRenderer,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IYtDlpProcessStartGate processStartGate)
         : this(
             (options ?? throw new ArgumentNullException(nameof(options))).Value,
             processFactory,
             argumentRenderer,
-            timeProvider)
+            timeProvider,
+            processStartGate)
     {
     }
 
@@ -281,7 +286,8 @@ public sealed class YtDlpClient : IYtDlpClient
     /// <inheritdoc />
     public async IAsyncEnumerable<VideoInfo> GetPlaylistInfoAsync(
         string url,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default,
+        YtDlpOptions? overrideOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
 
@@ -289,9 +295,16 @@ public sealed class YtDlpClient : IYtDlpClient
         {
             "--dump-json",
             "--yes-playlist",
-            "--ignore-no-formats-error",
-            url
+            "--ignore-no-formats-error"
         };
+
+        if (overrideOptions is not null)
+        {
+            args.AddRange(_renderer.Render(overrideOptions));
+        }
+
+        args.Add(url);
+
         var startInfo = BuildBareStartInfo(args);
 
         await foreach (var line in StreamStdoutAsync(startInfo, ct).ConfigureAwait(false))
@@ -571,6 +584,7 @@ public sealed class YtDlpClient : IYtDlpClient
         YtDlpProcessStartInfo startInfo,
         [EnumeratorCancellation] CancellationToken ct)
     {
+        await _processStartGate.WaitForTurnAsync(ct).ConfigureAwait(false);
         await using var process = _factory.Create(startInfo);
         var stderrBuffer = new RingBuffer<string>(_options.StderrTailLineCount);
         var stderrTask = StartStderrTailingAsync(process, stderrBuffer);
@@ -615,6 +629,7 @@ public sealed class YtDlpClient : IYtDlpClient
         Func<string, CancellationToken, ValueTask>? handleStdoutLine,
         CancellationToken ct)
     {
+        await _processStartGate.WaitForTurnAsync(ct).ConfigureAwait(false);
         await using var process = _factory.Create(startInfo);
         var stderrBuffer = new RingBuffer<string>(_options.StderrTailLineCount);
 
@@ -652,6 +667,7 @@ public sealed class YtDlpClient : IYtDlpClient
         IProgress<YtDlpProgress>? progress,
         CancellationToken ct)
     {
+        await _processStartGate.WaitForTurnAsync(ct).ConfigureAwait(false);
         await using var process = _factory.Create(startInfo);
         var stdoutLines = new List<string>();
         var stderrLines = new List<string>();
@@ -847,6 +863,15 @@ public sealed class YtDlpClient : IYtDlpClient
                                   || (defaults.Filesystem.ForceOverwrites
                                       && !options.Filesystem.NoOverwrites
                                       && !options.Filesystem.NoForceOverwrites)
+            },
+            Download = options.Download with
+            {
+                LimitRate = string.IsNullOrWhiteSpace(options.Download.LimitRate)
+                    ? defaults.Download.LimitRate
+                    : options.Download.LimitRate,
+                ThrottledRate = string.IsNullOrWhiteSpace(options.Download.ThrottledRate)
+                    ? defaults.Download.ThrottledRate
+                    : options.Download.ThrottledRate
             }
         };
     }
@@ -916,6 +941,15 @@ public sealed class YtDlpClient : IYtDlpClient
                     : options.OutputFileTemplate,
                 RestrictFilenames = options.RestrictFilenames,
                 ForceOverwrites = options.OverwriteFiles
+            },
+            Download = new YtDlpDownloadOptions
+            {
+                LimitRate = string.IsNullOrWhiteSpace(options.DownloadLimitRate)
+                    ? null
+                    : options.DownloadLimitRate,
+                ThrottledRate = string.IsNullOrWhiteSpace(options.DownloadThrottledRate)
+                    ? null
+                    : options.DownloadThrottledRate
             }
         };
 

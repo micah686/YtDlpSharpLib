@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IYtDlpArgumentRenderer, YtDlpArgumentRenderer>();
         services.TryAddSingleton<IYtDlpProcessFactory, YtDlpProcessFactory>();
+        services.TryAddSingleton<IYtDlpProcessStartGate, YtDlpProcessStartGate>();
         services.TryAddSingleton<IYtDlpClient, YtDlpClient>();
         services.TryAddSingleton<IYtDlpExecutionScheduler, YtDlpExecutionScheduler>();
 
