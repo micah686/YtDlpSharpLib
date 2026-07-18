@@ -48,6 +48,10 @@ public sealed record CommentInfo
     [JsonPropertyName("is_pinned")]
     public bool? IsPinned { get; init; }
 
+    /// <summary>Whether the comment author is the video's uploader.</summary>
+    [JsonPropertyName("author_is_uploader")]
+    public bool? AuthorIsUploader { get; init; }
+
     /// <summary>Captures unmodelled fields emitted by the extractor.</summary>
     [JsonExtensionData]
     public IDictionary<string, JsonElement>? ExtensionData { get; set; }
